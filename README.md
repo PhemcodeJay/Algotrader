@@ -4,7 +4,7 @@
 
 `ALGOTRADER` is a **real-time crypto signal and trading engine** that blends **multi-timeframe technical analysis**, **machine learning signal filtering**, and **Bybit USDT futures execution** into one automated loop.
 
-It scans high-volume crypto pairs on Bybit, identifies strong entries using indicators like EMA, RSI, MACD, ATR, and Bollinger Bands, ranks signals by score and confidence, filters them using ML, then executes real or virtual trades. It logs everything to a PostgreSQL database and exports signal reports to PDF, Discord, and Reddit.
+It scans high-volume crypto pairs on Bybit, identifies strong entries using indicators like EMA, RSI, MACD, ATR, and Bollinger Bands, ranks signals by score and confidence, filters them using ML, then executes real or virtual trades. It logs everything to a PostgreSQL database and exports signal reports to PDF, Discord, and TELEGRAM.
 
 ---
 
@@ -36,7 +36,7 @@ It scans high-volume crypto pairs on Bybit, identifies strong entries using indi
 * 📤 **PDF Signal Reports + Social Posting**
 
   * Top 20 signals saved to `/reports/*.pdf`
-  * Top 5 signals sent to **Discord** and **Reddit**
+  * Top 5 signals sent to **Discord** and **TELEGRAM**
 
 * 📈 **Smart Trade Structuring**
   Signals include:
@@ -54,7 +54,7 @@ It scans high-volume crypto pairs on Bybit, identifies strong entries using indi
 ├── database.py            # SQLAlchemy ORM manager
 ├── bybit_client.py        # Trading interface (real/virtual)
 ├── data_provider.py       # OHLCV + price feed from Bybit
-├── exports.py             # PDF export + Discord/Reddit hooks
+├── exports.py             # PDF export + Discord/TELEGRAM hooks
 ├── ml.py                  # Signal filtering + scoring enhancement
 ├── utils.py               # Helpers: pricing, JSON saving, etc.
 ├── reports/               # Exported signal PDFs
@@ -124,7 +124,7 @@ After each scan:
 * ✅ Top 5 signals are:
 
   * Printed to terminal
-  * Posted to Discord & Reddit
+  * Posted to Discord & TELEGRAM
 * 📝 Top 20 signals are:
 
   * Exported to PDF (`/reports/signals_<timestamp>.pdf`)
