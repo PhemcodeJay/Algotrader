@@ -1,6 +1,4 @@
----
-
-# 📈 AlgoTrader - Crypto Signal Scanner & Auto-Trading Engine
+📈 AlgoTrader - Crypto Signal Scanner & Auto-Trading Engine
 
 `ALGOTRADER` is a **real-time crypto signal and trading engine** that blends **multi-timeframe technical analysis**, **machine learning signal filtering**, and **Bybit USDT futures execution** into one automated loop.
 
