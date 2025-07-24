@@ -2,7 +2,7 @@
 
 # 📈 AlgoTrader - Crypto Signal Scanner & Auto-Trading Engine
 
-`hybrid_engine.py` is a **real-time crypto signal and trading engine** that blends **multi-timeframe technical analysis**, **machine learning signal filtering**, and **Bybit USDT futures execution** into one automated loop.
+`ALGOTRADER` is a **real-time crypto signal and trading engine** that blends **multi-timeframe technical analysis**, **machine learning signal filtering**, and **Bybit USDT futures execution** into one automated loop.
 
 It scans high-volume crypto pairs on Bybit, identifies strong entries using indicators like EMA, RSI, MACD, ATR, and Bollinger Bands, ranks signals by score and confidence, filters them using ML, then executes real or virtual trades. It logs everything to a PostgreSQL database and exports signal reports to PDF, Discord, and Reddit.
 
