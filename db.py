@@ -67,10 +67,10 @@ class DatabaseManager:
         self.settings = {
             "SCAN_INTERVAL": 900,       # 15 minutes
             "TOP_N_SIGNALS": 5,
-            "MAX_LOSS_PCT": -5.0,
-            "TP_PERCENT": 0.15,         # 15%
-            "SL_PERCENT": 0.01,         # 1%
-            "LEVERAGE": 5,
+            "MAX_LOSS_PCT": -15.0,
+            "TP_PERCENT": 0.30,         # 30%
+            "SL_PERCENT": 0.15,         # 15%
+            "LEVERAGE": 20,          # 20x leverage
             "RISK_PER_TRADE": 0.01,     # 1%
         }
         self._load_settings_from_file()
@@ -242,10 +242,10 @@ class DatabaseManager:
         self.settings = {
             "SCAN_INTERVAL": 900,
             "TOP_N_SIGNALS": 5,
-            "MAX_LOSS_PCT": -5.0,
-            "TP_PERCENT": 0.15,
-            "SL_PERCENT": 0.01,
-            "LEVERAGE": 5,
+            "MAX_LOSS_PCT": -15.0,
+            "TP_PERCENT": 0.30,
+            "SL_PERCENT": 0.15,
+            "LEVERAGE": 20,
             "RISK_PER_TRADE": 0.01,
         }
         self._save_settings_to_file()

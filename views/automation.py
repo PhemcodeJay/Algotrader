@@ -3,6 +3,8 @@ import streamlit as st
 import time
 from datetime import datetime
 
+from utils import format_currency
+
 def render(trading_engine, dashboard, automated_trader):
     st.title("🤖 AlgoTrader Automation")
 
@@ -128,7 +130,7 @@ def render(trading_engine, dashboard, automated_trader):
     col1.metric("Total Signals", signals_generated)
     col2.metric("Total Trades", trades_executed)
     col3.metric("Success Rate", f"{success_rate:.1f}%")
-    col4.metric("Total P&L", f"${dashboard.format_currency(total_pnl)}")
+    col4.metric("Total P&L", format_currency(total_pnl))
 
     # --- Timing Info ---
     if status.get("is_running"):
