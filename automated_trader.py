@@ -3,7 +3,7 @@ import time
 import threading
 import logging
 from datetime import datetime, timedelta
-from engine import TradingEngine  
+from engine import TradingEngine
 from utils import calculate_drawdown
 
 
@@ -29,7 +29,10 @@ class AutomatedTrader:
         stats_setting = self.db.get_setting("AUTOMATION_STATS")
         self.stats = json.loads(stats_setting) if stats_setting else {
             "signals_generated": 0,
-            "last_update": None
+            "last_update": None,
+            "trades_executed": 0,
+            "successful_trades": 0,
+            "total_pnl": 0.0,
         }
 
         logging.basicConfig(
@@ -43,25 +46,22 @@ class AutomatedTrader:
         self.logger = logging.getLogger(__name__)
 
     def get_today_trades(self):
-        """Returns today's trades for risk checks."""
         all_trades = self.db.get_trades(limit=500)
         today_str = datetime.now().strftime("%Y-%m-%d")
         return [t for t in all_trades if t.timestamp.strftime("%Y-%m-%d") == today_str]
 
     def check_risk_limits(self):
-        """Applies drawdown and daily trade caps."""
         trades = self.db.get_trades(limit=1000)
 
-        # Load capital from capital.json
+        # Load capital
         try:
             with open("capital.json", "r") as f:
                 capital_data = json.load(f)
                 capital = capital_data.get("capital", 100)
         except Exception as e:
             self.logger.error(f"Failed to read capital.json: {e}")
-            capital = 100  # Fallback default
+            capital = 100
 
-        # Build equity curve from trades (cumulative capital + pnl)
         equity_curve = [float(capital)]
         sorted_trades = sorted(trades, key=lambda t: t.timestamp)
 
@@ -69,17 +69,15 @@ class AutomatedTrader:
             pnl = getattr(trade, "pnl", None)
             if pnl is None:
                 pnl = trade.get("pnl", 0)
-            equity_curve.append(float(equity_curve[-1]) + float(pnl))
+            equity_curve.append(equity_curve[-1] + float(pnl))
 
         max_drawdown, _ = calculate_drawdown(equity_curve)
-
         if max_drawdown >= self.max_drawdown_limit:
             self.logger.warning(f"🚫 Max drawdown exceeded: {max_drawdown:.2f}%")
             return False
 
-        daily_trades = self.get_today_trades()
-        if len(daily_trades) >= self.max_daily_trades:
-            self.logger.warning(f"🚫 Max daily trades exceeded: {len(daily_trades)}")
+        if len(self.get_today_trades()) >= self.max_daily_trades:
+            self.logger.warning("🚫 Max daily trades exceeded")
             return False
 
         return True
@@ -142,10 +140,22 @@ class AutomatedTrader:
             },
             "last_run": self.last_run_time.isoformat() if self.last_run_time else None,
             "next_run": (self.last_run_time + timedelta(seconds=self.signal_interval)).isoformat()
-                        if self.last_run_time else None,
-            "stats": self.stats
+            if self.last_run_time else None,
+            "stats": self.stats,
         }
 
+    def update_settings(self, new_settings: dict):
+        """Update automation settings and reload them into instance variables."""
+        for key, value in new_settings.items():
+            self.db.set_setting(key, value)
 
-# Singleton instance
+        # Reload in-memory settings
+        self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 900)
+        self.max_signals = int(self.db.get_setting("TOP_N_SIGNALS") or 5)
+        self.max_drawdown_limit = float(self.db.get_setting("MAX_DRAWDOWN") or 20)
+        self.max_daily_trades = int(self.db.get_setting("MAX_DAILY_TRADES") or 50)
+        self.max_position_pct = float(self.db.get_setting("MAX_POSITION_PCT") or 5)
+
+
+# ✅ Singleton instance for use across app
 automated_trader = AutomatedTrader()
