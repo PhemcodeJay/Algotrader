@@ -59,8 +59,8 @@ if st.sidebar.button("🔄 Refresh Now"):
     st.cache_data.clear()
     st.rerun()
 
-    # Sidebar wallet & status info
-    try:
+# Sidebar wallet & status info
+try:
     balance_dict = trading_engine.load_capital() or {}
     daily_pnl_pct = trading_engine.get_daily_pnl()
 
@@ -68,18 +68,17 @@ if st.sidebar.button("🔄 Refresh Now"):
     daily_pnl_value = daily_pnl_pct if isinstance(daily_pnl_pct, (int, float)) else 0.0
 
     status = (
-    "success" if daily_pnl_value > 0
-    else "failed" if daily_pnl_value < 0
-    else "pending"
+        "success" if daily_pnl_value > 0
+        else "failed" if daily_pnl_value < 0
+        else "pending"
     )
     status_color = get_status_color(status)
 
     st.sidebar.metric(
-    "💰 Wallet Balance",
-    f"{format_currency(balance_value)}",
-    f"{format_percentage(daily_pnl_value)} today"
+        "💰 Wallet Balance",
+        f"{format_currency(balance_value)}",
+        f"{format_percentage(daily_pnl_value)} today"
     )
-
 
     max_loss_pct = trading_engine.default_settings.get("MAX_LOSS_PCT", -15.0)
     trading_status = "🟢 Active" if daily_pnl_value > max_loss_pct else "🔴 Paused"
@@ -130,7 +129,6 @@ elif page == "🤖 Automation":
     view.render(trading_engine, dashboard, automated_trader)
 
 elif page == "🗄️ Database":
-    # Inline DB info page, no views/db.py import needed
     st.title("🗄️ Database Overview")
 
     db_health = db_manager.get_db_health()
