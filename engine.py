@@ -4,15 +4,16 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
+
+import db
 import signal_generator
-
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-
-import db  # this imports the db module
 from signal_generator import get_usdt_symbols, analyze
 from bybit_client import BybitClient
 from ml import MLFilter
+
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from utils import send_discord_message, send_telegram_message
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -46,12 +47,10 @@ class TradingEngine:
     def save_signal_pdf(self, signal: dict):
         filename = f"reports/signals/{signal.get('Symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-
         c = canvas.Canvas(filename, pagesize=letter)
         c.setFont("Helvetica-Bold", 14)
         c.drawString(50, 750, f"Signal Report for {signal.get('Symbol', 'UNKNOWN')}")
         c.setFont("Helvetica", 10)
-
         y = 730
         for key, val in signal.items():
             c.drawString(50, y, f"{key}: {val}")
@@ -59,20 +58,16 @@ class TradingEngine:
             if y < 50:
                 c.showPage()
                 y = 750
-                c.setFont("Helvetica", 10)
-
         c.save()
         print(f"[Engine] ✅ Saved signal PDF: {filename}")
 
     def save_trade_pdf(self, trade: dict):
         filename = f"reports/trades/{trade.get('symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-
         c = canvas.Canvas(filename, pagesize=letter)
         c.setFont("Helvetica-Bold", 14)
         c.drawString(50, 750, f"Trade Report for {trade.get('symbol', 'UNKNOWN')}")
         c.setFont("Helvetica", 10)
-
         y = 730
         for key, val in trade.items():
             c.drawString(50, y, f"{key}: {val}")
@@ -80,27 +75,62 @@ class TradingEngine:
             if y < 50:
                 c.showPage()
                 y = 750
-                c.setFont("Helvetica", 10)
-
         c.save()
         print(f"[Engine] ✅ Saved trade PDF: {filename}")
 
+    def post_signal_to_discord(self, signal: dict):
+        msg = (
+            f"📡 **AI Signal**: `{signal.get('Symbol', 'N/A')}`\n"
+            f"Side: `{signal.get('Side', 'N/A')}`\n"
+            f"Entry: `{signal.get('Entry', 'N/A')}` | TP: `{signal.get('TP', 'N/A')}` | SL: `{signal.get('SL', 'N/A')}`\n"
+            f"Score: `{signal.get('score', 0)}%` | Strategy: `{signal.get('strategy', '-')}`\n"
+            f"Market: `{signal.get('market', 'bybit')}` | Margin: `{signal.get('margin', '-')}`"
+        )
+        send_discord_message(msg)
+
+    def post_signal_to_telegram(self, signal: dict):
+        msg = (
+            f"📡 <b>AI Signal</b>: <code>{signal.get('Symbol', 'N/A')}</code>\n"
+            f"Side: <code>{signal.get('Side', 'N/A')}</code>\n"
+            f"Entry: <code>{signal.get('Entry', 'N/A')}</code> | TP: <code>{signal.get('TP', 'N/A')}</code> | SL: <code>{signal.get('SL', 'N/A')}</code>\n"
+            f"Score: <code>{signal.get('score', 0)}%</code> | Strategy: <code>{signal.get('strategy', '-')}</code>\n"
+            f"Market: <code>{signal.get('market', 'bybit')}</code> | Margin: <code>{signal.get('margin', '-')}</code>"
+        )
+        send_telegram_message(msg, parse_mode="HTML")
+
+    def post_trade_to_discord(self, trade: dict):
+        msg = (
+            f"💼 **Trade Executed**: `{trade.get('symbol', 'N/A')}`\n"
+            f"Side: `{trade.get('side', 'N/A')}` | Entry: `{trade.get('entry_price', 'N/A')}`\n"
+            f"Qty: `{trade.get('qty', 0)}` | Order ID: `{trade.get('order_id', '-')}`\n"
+            f"Mode: `{'REAL' if not trade.get('virtual') else 'VIRTUAL'}`"
+        )
+        send_discord_message(msg)
+
+    def post_trade_to_telegram(self, trade: dict):
+        msg = (
+            f"💼 <b>Trade Executed</b>: <code>{trade.get('symbol', 'N/A')}</code>\n"
+            f"Side: <code>{trade.get('side', 'N/A')}</code> | Entry: <code>{trade.get('entry_price', 'N/A')}</code>\n"
+            f"Qty: <code>{trade.get('qty', 0)}</code> | Order ID: <code>{trade.get('order_id', '-')}</code>\n"
+            f"Mode: <code>{'REAL' if not trade.get('virtual') else 'VIRTUAL'}</code>"
+        )
+        send_telegram_message(msg, parse_mode="HTML")
+
     def run_once(self):
-        print("[Engine] 🔍 Scanning Binance Futures market...\n")
+        print("[Engine] 🔍 Scanning market...\n")
         scan_interval, top_n_signals = self.get_settings()
         signals = []
         symbols = get_usdt_symbols()
 
         for symbol in symbols:
-            raw_signal = analyze(symbol)
-            if raw_signal:
-                enhanced = self.ml.enhance_signal(raw_signal)
+            raw = analyze(symbol)
+            if raw:
+                enhanced = self.ml.enhance_signal(raw)
                 print(
-                    f"✅ ML Signal: {enhanced.get('Symbol', 'UNKNOWN')} "
-                    f"({enhanced.get('Side', 'N/A')} @ {enhanced.get('Entry', 'N/A')}) → "
-                    f"Score: {enhanced.get('score', 0)}%"
+                    f"✅ ML Signal: {enhanced.get('Symbol')} "
+                    f"({enhanced.get('Side')} @ {enhanced.get('Entry')}) → "
+                    f"Score: {enhanced.get('score')}%"
                 )
-
                 self.db.add_signal({
                     "symbol": enhanced.get("Symbol", ""),
                     "interval": enhanced.get("Interval", "15m"),
@@ -110,85 +140,74 @@ class TradingEngine:
                 })
 
                 self.save_signal_pdf(enhanced)
+                self.post_signal_to_discord(enhanced)
+                self.post_signal_to_telegram(enhanced)
                 signals.append(enhanced)
-
             time.sleep(0.2)
 
         if not signals:
             print("[Engine] ⚠️ No tradable signals found.")
             return []
 
-        signals.sort(key=lambda x: x.get('score', 0), reverse=True)
+        signals.sort(key=lambda x: x.get("score", 0), reverse=True)
         top_signals = signals[:top_n_signals]
 
         for signal in top_signals:
-            print(
-                f"[Engine] 🧠 Executing trade for {signal.get('Symbol', 'UNKNOWN')} "
-                f"(Score: {signal.get('score', 0)}%)"
-            )
-
+            print(f"[Engine] 🧠 Executing trade for {signal.get('Symbol')} (Score: {signal.get('score')}%)")
             is_real = getattr(self.client, "use_real", False)
 
-            if is_real:
-                print(f"[Engine] 🔁 Placing LIVE order on mainnet for {signal.get('Symbol')}")
-            else:
-                print(f"[Engine] 🧪 Simulating VIRTUAL trade on testnet for {signal.get('Symbol')}")
-
             try:
-                order_response = self.client.place_order(
-                    symbol=signal.get("Symbol", ""),
-                    side=signal.get("Side", ""),
+                order = self.client.place_order(
+                    symbol=signal.get("Symbol"),
+                    side=signal.get("Side"),
                     order_type=signal.get("OrderType", "Market"),
                     qty=signal.get("Qty", 0),
                     price=signal.get("Entry", 0.0),
                     time_in_force=signal.get("TIF", "GoodTillCancel"),
                 )
             except Exception as e:
-                print(f"[Engine] ❌ Order placement failed: {e}")
+                print(f"[Engine] ❌ Order failed: {e}")
                 continue
 
-            trade_record = {
-                "symbol": signal.get("Symbol", ""),
-                "side": signal.get("Side", ""),
+            trade = {
+                "symbol": signal.get("Symbol"),
+                "side": signal.get("Side"),
                 "qty": signal.get("Qty", 0),
                 "entry_price": signal.get("Entry", 0.0),
                 "exit_price": None,
                 "pnl": None,
                 "timestamp": datetime.now(),
                 "status": "open",
-                "order_id": order_response.get("order_id", "") if order_response else "",
+                "order_id": order.get("order_id", "") if order else "",
                 "virtual": not is_real,
             }
 
-            self.db.add_trade(trade_record)
-            self.save_trade_pdf(trade_record)
+            self.db.add_trade(trade)
+            self.save_trade_pdf(trade)
+            self.post_trade_to_discord(trade)
+            self.post_trade_to_telegram(trade)
 
-        if not getattr(self.client, "use_real", False):
-            print("[Engine] 🧪 Monitoring virtual orders...")
-            if hasattr(self.client, "monitor_virtual_orders"):
-                self.client.monitor_virtual_orders()
-            else:
-                print("[Engine] ⚠️ monitor_virtual_orders() not implemented in BybitClient.")
+        if not getattr(self.client, "use_real", False) and hasattr(self.client, "monitor_virtual_orders"):
+            self.client.monitor_virtual_orders()
 
         return top_signals
 
     def run_loop(self):
-        print("[Engine] ♻️ Entering scan loop...\n")
+        print("[Engine] ♻️ Starting scan loop...")
         while True:
             try:
                 self.run_once()
             except Exception as e:
                 print(f"[Engine] ❌ Error: {e}")
             scan_interval, _ = self.get_settings()
-            print(f"[Engine] ⏱️ Sleeping for {scan_interval} seconds...\n")
+            print(f"[Engine] ⏱️ Sleeping {scan_interval} seconds...\n")
             time.sleep(scan_interval)
 
     def get_recent_trades(self, limit=10):
         try:
             trades = self.db.get_recent_trades(limit=limit)
-            formatted = []
-            for t in trades:
-                formatted.append({
+            return [
+                {
                     "symbol": t.symbol,
                     "side": t.side,
                     "qty": t.qty,
@@ -199,10 +218,11 @@ class TradingEngine:
                     "order_id": t.order_id,
                     "timestamp": t.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
                     "virtual": t.virtual
-                })
-            return formatted
+                }
+                for t in trades
+            ]
         except Exception as e:
-            print(f"[Engine] ⚠️ Failed to get recent trades: {e}")
+            print(f"[Engine] ⚠️ get_recent_trades failed: {e}")
             return []
 
     def load_capital(self) -> dict:
@@ -210,59 +230,37 @@ class TradingEngine:
             try:
                 return self.client.get_balance()
             except Exception as e:
-                logger.warning(f"[Engine] ⚠️ get_balance() failed: {e}")
-        else:
-            logger.info("[Engine] ⚠️ Virtual mode or client has no get_balance(). Using fallback.")
-            try:
-                with open("capital.json", "r") as f:
-                    data = json.load(f)
-                    capital = float(data.get("capital", 100.0))
-                    currency = data.get("currency", "USD")
-                    return {"capital": capital, "currency": currency}
-            except Exception as e:
-                logger.warning(f"[Engine] ⚠️ Could not load capital.json: {e}")
-
-        return {"capital": 100.0, "currency": "USD"}
+                logger.warning(f"[Engine] ⚠️ get_balance failed: {e}")
+        try:
+            with open("capital.json", "r") as f:
+                data = json.load(f)
+                return {
+                    "capital": float(data.get("capital", 100.0)),
+                    "currency": data.get("currency", "USD"),
+                }
+        except Exception as e:
+            logger.warning(f"[Engine] ⚠️ capital.json missing: {e}")
+            return {"capital": 100.0, "currency": "USD"}
 
     def get_daily_pnl(self):
         if hasattr(self.db, "get_daily_pnl_pct"):
             return self.db.get_daily_pnl_pct()
-        else:
-            print("[Engine] ⚠️ get_daily_pnl_pct() not implemented in DatabaseManager.")
-            return None
+        return None
 
     def calculate_win_rate(self, trades):
         if not trades:
             return 0.0
-        wins = sum(1 for trade in trades if trade['pnl'] > 0)
+        wins = sum(1 for t in trades if t.get('pnl', 0) > 0)
         return round((wins / len(trades)) * 100, 2)
-
-    def generate_signals(self, confidence_threshold: float = 70.0) -> list:
-        signals = []
-        symbols = self.signal_generator.get_usdt_symbols()
-
-        for sym in symbols:
-            try:
-                result = self.signal_generator.analyze(sym)
-                if result and result.get("Score", 0) >= confidence_threshold:
-                    signals.append(result)
-            except Exception as e:
-                logger.warning(f"[Engine] ⚠️ Error analyzing {sym}: {e}")
-
-        signals.sort(key=lambda x: x.get("Score", 0), reverse=True)
-        return signals
 
     @property
     def default_settings(self):
-        scan_interval = self.db.get_setting("SCAN_INTERVAL")
-        top_n_signals = self.db.get_setting("TOP_N_SIGNALS")
-        max_loss_pct = self.db.get_setting("MAX_LOSS_PCT")
         return {
-            "SCAN_INTERVAL": int(scan_interval) if scan_interval else DEFAULT_SCAN_INTERVAL,
-            "TOP_N_SIGNALS": int(top_n_signals) if top_n_signals else DEFAULT_TOP_N_SIGNALS,
-            "MAX_LOSS_PCT": float(max_loss_pct) if max_loss_pct else -5.0
+            "SCAN_INTERVAL": int(self.db.get_setting("SCAN_INTERVAL") or DEFAULT_SCAN_INTERVAL),
+            "TOP_N_SIGNALS": int(self.db.get_setting("TOP_N_SIGNALS") or DEFAULT_TOP_N_SIGNALS),
+            "MAX_LOSS_PCT": float(self.db.get_setting("MAX_LOSS_PCT") or -5.0),
         }
 
 
-# Exportable engine instance
+# Export singleton
 engine = TradingEngine()

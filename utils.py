@@ -16,13 +16,11 @@ def calculate_indicators(data: List[Dict[str, Any]]) -> pd.DataFrame:
         return df
 
     df = df.sort_values("timestamp").reset_index(drop=True)
-
-    # Ensure 'close' is float BEFORE computing delta for numeric ops
     df['close'] = df['close'].astype(float)
 
-    delta = df['close'].diff()
-    gain = delta.where(delta > 0, 0.0)  # type: ignore
-    loss = -delta.where(delta < 0, 0.0) # type: ignore
+    delta = df['close'].diff().astype(float)
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
 
     avg_gain = gain.rolling(14).mean()
     avg_loss = loss.rolling(14).mean()
@@ -176,3 +174,40 @@ def save_trade_json(trade: Dict[str, Any], folder: str = "reports/trades") -> No
             json.dump(existing_trades, f, indent=2)
     except Exception as e:
         print(f"[save_trade_json] Error saving trade: {e}")
+
+
+def send_discord_message(message: str) -> None:
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    if not webhook_url:
+        print("⚠️ DISCORD_WEBHOOK_URL is not set.")
+        return
+
+    payload = {"content": message}
+    try:
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        response.raise_for_status()
+        print("✅ Discord message sent.")
+    except Exception as e:
+        print(f"❌ Failed to send Discord message: {e}")
+
+
+def send_telegram_message(message: str, parse_mode: str = "HTML") -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("⚠️ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set.")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": parse_mode
+    }
+
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        response.raise_for_status()
+        print("✅ Telegram message sent.")
+    except Exception as e:
+        print(f"❌ Failed to send Telegram message: {e}")
