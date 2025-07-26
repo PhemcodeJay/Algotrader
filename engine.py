@@ -1,3 +1,5 @@
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 import os
 import time
 import json
@@ -11,9 +13,6 @@ from signal_generator import get_usdt_symbols, analyze
 from bybit_client import BybitClient
 from ml import MLFilter
 from utils import send_discord_message, send_telegram_message, serialize_datetimes
-
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -44,39 +43,55 @@ class TradingEngine:
     def reset_to_defaults(self):
         self.db.reset_all_settings_to_defaults()
 
-    def save_signal_pdf(self, signal: dict):
-        filename = f"reports/signals/{signal.get('Symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        c = canvas.Canvas(filename, pagesize=letter)
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(50, 750, f"Signal Report for {signal.get('Symbol', 'UNKNOWN')}")
-        c.setFont("Helvetica", 10)
-        y = 730
-        for key, val in signal.items():
-            c.drawString(50, y, f"{key}: {val}")
-            y -= 15
-            if y < 50:
-                c.showPage()
-                y = 750
-        c.save()
-        print(f"[Engine] ✅ Saved signal PDF: {filename}")
+    def save_signal_pdf(self, signals: list[dict]):
+        if not signals:
+            print("[Engine] ⚠️ No signals to save.")
+            return
 
-    def save_trade_pdf(self, trade: dict):
-        filename = f"reports/trades/{trade.get('symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = f"reports/signals/ALL_SIGNALS_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         c = canvas.Canvas(filename, pagesize=letter)
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(50, 750, f"Trade Report for {trade.get('symbol', 'UNKNOWN')}")
-        c.setFont("Helvetica", 10)
-        y = 730
-        for key, val in trade.items():
-            c.drawString(50, y, f"{key}: {val}")
-            y -= 15
-            if y < 50:
-                c.showPage()
-                y = 750
+
+        for idx, signal in enumerate(signals):
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(50, 750, f"[{idx + 1}] Signal Report - {signal.get('Symbol', 'UNKNOWN')}")
+            c.setFont("Helvetica", 10)
+            y = 730
+            for key, val in signal.items():
+                c.drawString(50, y, f"{key}: {val}")
+                y -= 15
+                if y < 50:
+                    c.showPage()
+                    y = 750
+            c.showPage()
+
         c.save()
-        print(f"[Engine] ✅ Saved trade PDF: {filename}")
+        print(f"[Engine] ✅ Saved all signals in one PDF: {filename}")
+
+    def save_trade_pdf(self, trades: list[dict]):
+        if not trades:
+            print("[Engine] ⚠️ No trades to save.")
+            return
+
+        filename = f"reports/trades/ALL_TRADES_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        c = canvas.Canvas(filename, pagesize=letter)
+
+        for idx, trade in enumerate(trades):
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(50, 750, f"[{idx + 1}] Trade Report - {trade.get('symbol', 'UNKNOWN')}")
+            c.setFont("Helvetica", 10)
+            y = 730
+            for key, val in trade.items():
+                c.drawString(50, y, f"{key}: {val}")
+                y -= 15
+                if y < 50:
+                    c.showPage()
+                    y = 750
+            c.showPage()
+
+        c.save()
+        print(f"[Engine] ✅ Saved all trades in one PDF: {filename}")
 
     def post_signal_to_discord(self, signal: dict):
         msg = (
@@ -120,6 +135,7 @@ class TradingEngine:
         print("[Engine] 🔍 Scanning market...\n")
         scan_interval, top_n_signals = self.get_settings()
         signals = []
+        trades = []
         symbols = get_usdt_symbols()
 
         for symbol in symbols:
@@ -132,7 +148,6 @@ class TradingEngine:
                     f"Score: {enhanced.get('score')}%"
                 )
 
-                # Serialize datetime fields in indicators
                 indicators_clean = serialize_datetimes(enhanced)
 
                 self.db.add_signal({
@@ -152,7 +167,6 @@ class TradingEngine:
                     "created_at": datetime.now(timezone.utc),
                 })
 
-                self.save_signal_pdf(enhanced)
                 self.post_signal_to_discord(enhanced)
                 self.post_signal_to_telegram(enhanced)
                 signals.append(enhanced)
@@ -196,9 +210,12 @@ class TradingEngine:
             }
 
             self.db.add_trade(trade)
-            self.save_trade_pdf(trade)
             self.post_trade_to_discord(trade)
             self.post_trade_to_telegram(trade)
+            trades.append(trade)
+
+        self.save_signal_pdf(signals)
+        self.save_trade_pdf(trades)
 
         if not getattr(self.client, "use_real", False) and hasattr(self.client, "monitor_virtual_orders"):
             self.client.monitor_virtual_orders()
