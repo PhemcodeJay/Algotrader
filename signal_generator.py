@@ -1,10 +1,19 @@
 import requests
+import os
 from datetime import datetime, timedelta, timezone
 from time import sleep
 import pytz
-from db import SessionLocal, Signal  # Make sure these are defined in db.py
+from db import SessionLocal, Signal  # Ensure this exists
+from dotenv import load_dotenv
 
-# === CONFIGURATION ===
+# === Load environment variables ===
+load_dotenv()
+
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# === Strategy configuration ===
 RISK_PCT = 0.15
 ACCOUNT_BALANCE = 100
 LEVERAGE = 20
@@ -14,19 +23,16 @@ MIN_ATR_PCT = 0.001
 RSI_ZONE = (20, 80)
 INTERVALS = ['15m', '1h', '4h']
 MAX_SYMBOLS = 100
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
 
 tz_utc3 = timezone(timedelta(hours=3))
 
-# === NOTIFICATIONS ===
+# === Notification handlers ===
 def send_discord(message):
     if DISCORD_WEBHOOK_URL:
         try:
             requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
         except Exception as e:
-            print(f"Discord error: {e}")
+            print(f"[Discord] Error: {e}")
 
 def send_telegram(message):
     if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
@@ -37,27 +43,27 @@ def send_telegram(message):
                 "text": message,
                 "parse_mode": "Markdown"
             })
-        except:
-            pass
+        except Exception as e:
+            print(f"[Telegram] Error: {e}")
 
-# === BYBIT DATA ===
-def get_candles(sym, interval):
+# === Data fetching ===
+def get_candles(symbol, interval):
     interval_map = {"15m": "15", "1h": "60", "4h": "240"}
-    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={sym}&interval={interval_map[interval]}&limit=200"
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={symbol}&interval={interval_map[interval]}&limit=200"
     try:
         res = requests.get(url)
-        data = res.json().get('result', {}).get('list', [])
-        return [{
+        candles = res.json().get("result", {}).get("list", [])
+        return [ {
             'high': float(c[3]),
             'low': float(c[4]),
             'close': float(c[5]),
             'volume': float(c[6])
-        } for c in data]
+        } for c in candles ]
     except Exception as e:
-        print(f"Failed to fetch {sym} candles: {e}")
+        print(f"Error fetching candles for {symbol} [{interval}]: {e}")
         return []
 
-# === INDICATORS ===
+# === Indicators ===
 def ema(prices, period):
     if len(prices) < period:
         return None
@@ -102,13 +108,14 @@ def macd(prices):
     return fast - slow if fast and slow else None
 
 def classify_trend(ema9, ema21, sma20):
-    if ema9 > ema21 > sma20:
-        return "Trend"
-    elif ema9 > ema21:
-        return "Swing"
+    if ema9 and ema21 and sma20:
+        if ema9 > ema21 > sma20:
+            return "Trend"
+        elif ema9 > ema21:
+            return "Swing"
     return "Scalp"
 
-# === ANALYSIS ===
+# === Signal Analyzer ===
 def analyze(symbol):
     data = {}
     for tf in INTERVALS:
@@ -135,11 +142,16 @@ def analyze(symbol):
         }
 
     tf = data['1h']
-    if tf['volume'] < MIN_VOLUME or tf['atr'] / tf['close'] < MIN_ATR_PCT or not (RSI_ZONE[0] < tf['rsi'] < RSI_ZONE[1]):
+    if (tf['volume'] < MIN_VOLUME or tf['atr'] is None or
+        tf['close'] is None or tf['rsi'] is None or
+        tf['atr'] / tf['close'] < MIN_ATR_PCT or
+        not (RSI_ZONE[0] < tf['rsi'] < RSI_ZONE[1])):
         return None
 
     sides = []
     for d in data.values():
+        if d['close'] is None or d['ema21'] is None or d['bb_up'] is None or d['bb_low'] is None:
+            return None
         if d['close'] > d['bb_up']:
             sides.append('LONG')
         elif d['close'] < d['bb_low']:
@@ -157,7 +169,11 @@ def analyze(symbol):
     trend = classify_trend(tf['ema9'], tf['ema21'], tf['sma20'])
     bb_dir = "Up" if price > tf['bb_up'] else "Down" if price < tf['bb_low'] else "No"
 
-    entry = min((v for v in [tf['sma20'], tf['ema9'], tf['ema21']] if v), key=lambda x: abs(x - price))
+    entry_sources = [tf['sma20'], tf['ema9'], tf['ema21']]
+    entry = min((v for v in entry_sources if v is not None), key=lambda x: abs(x - price), default=None)
+    if entry is None:
+        return None
+
     tp = round(entry * (1.015 if side == 'LONG' else 0.985), 6)
     sl = round(entry * (0.985 if side == 'LONG' else 1.015), 6)
     trail = round(entry * (1 - ENTRY_BUFFER_PCT) if side == 'LONG' else entry * (1 + ENTRY_BUFFER_PCT), 6)
@@ -165,7 +181,7 @@ def analyze(symbol):
     margin = round((ACCOUNT_BALANCE * RISK_PCT) / LEVERAGE, 6)
 
     score = 0
-    score += 0.3 if tf['macd'] > 0 else 0
+    score += 0.3 if tf['macd'] and tf['macd'] > 0 else 0
     score += 0.2 if tf['rsi'] < 30 or tf['rsi'] > 70 else 0
     score += 0.3 if bb_dir != "No" else 0.1
     score += 0.2 if trend == "Trend" else 0.1
@@ -186,7 +202,7 @@ def analyze(symbol):
         'time': datetime.now(tz_utc3)
     }
 
-# === FETCH SYMBOLS ===
+# === Symbols Fetcher ===
 def get_usdt_symbols():
     try:
         url = "https://api.bybit.com/v5/market/tickers?category=linear"
@@ -197,8 +213,11 @@ def get_usdt_symbols():
         print(f"Symbol fetch failed: {e}")
         return []
 
-# === SAVE SIGNAL TO DB ===
+# === DB Saving ===
 def save_signal_to_db(sig_data):
+    if not sig_data.get('symbol') or not sig_data.get('side') or not sig_data.get('entry'):
+        print(f"⚠️ Skipping invalid signal: {sig_data}")
+        return
     session = SessionLocal()
     try:
         signal = Signal(**sig_data)
@@ -207,43 +226,42 @@ def save_signal_to_db(sig_data):
         print(f"✅ Saved: {sig_data['symbol']}")
     except Exception as e:
         session.rollback()
-        print(f"❌ DB Save error: {e}")
+        print(f"❌ DB Error: {e}")
     finally:
         session.close()
 
-# === MAIN LOOP ===
+# === Main Scanner ===
 def main():
     while True:
         print("\n🔍 Scanning Bybit USDT Perpetuals...\n")
-        syms = get_usdt_symbols()
+        symbols = get_usdt_symbols()
         signals = []
 
-        for sym in syms:
+        for sym in symbols:
             sig = analyze(sym)
             if sig:
                 signals.append(sig)
                 save_signal_to_db(sig)
+            else:
+                print(f"❌ {sym}: No valid signal")
             sleep(0.3)
 
         if signals:
             signals.sort(key=lambda x: x['score'], reverse=True)
             top5 = signals[:5]
-            top_msg = "\n\n".join([f"""
+            msg = "\n\n".join([f"""
 ==================== {s['symbol']} ====================
 📊 TYPE: {s['type']}     📈 SIDE: {s['side']}     🏆 SCORE: {s['score']}%
-💵 ENTRY: {s['entry']}   🎯 TP: {s['tp']}         🛡️ SL: {s['sl']}
-💱 MARKET: {s['market']} 📍 BB: {s['bb_slope']}    🔄 Trail: {s['trail']}
-⚖️ MARGIN: {s['margin']} ⚠️ LIQ: {s['liq']}
+💵 ENTRY: ${s['entry']:.2f}   🎯 TP: ${s['tp']:.2f}         🛡️ SL: ${s['sl']:.2f}
+💱 MARKET: ${s['market']:.2f} 📍 BB: {s['bb_slope']}    🔄 Trail: ${s['trail']:.2f}
+⚖️ MARGIN: ${s['margin']:.2f} ⚠️ LIQ: ${s['liq']:.2f}
 ⏰ TIME: {s['time'].strftime('%Y-%m-%d %H:%M UTC+3')}
 =========================================================""" for s in top5])
-
-            send_discord(f"📊 **Top Signals**\n\n{top_msg}")
-            send_telegram(f"📊 *Top Signals*\n\n{top_msg}")
-            print("📤 Signals sent to Discord & Telegram.")
+            send_discord(f"📊 **Top Signals**\n\n{msg}")
+            send_telegram(f"📊 *Top Signals*\n\n{msg}")
         else:
-            print("⚠️ No valid signals.")
-
-        print("♻️ Rescanning in 60 minutes...\n")
+            print("📭 No valid signals found.")
+        print("♻️ Waiting 60 minutes...")
         sleep(3600)
 
 if __name__ == "__main__":
