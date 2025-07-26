@@ -31,6 +31,23 @@ class Signal(Base):
     market: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    def to_dict(self):
+        return {
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "signal_type": self.signal_type,
+            "score": self.score,
+            "strategy": self.strategy,
+            "side": self.side,
+            "sl": self.sl,
+            "tp": self.tp,
+            "entry": self.entry,
+            "leverage": self.leverage,
+            "margin": self.margin_usdt,
+            "market": self.market,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "indicators": self.indicators,
+        }
 
 class Trade(Base):
     __tablename__ = 'trades'
@@ -50,6 +67,23 @@ class Trade(Base):
     order_id: Mapped[str] = mapped_column(String)
     virtual: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    def to_dict(self):
+        return {
+            "symbol": self.symbol,
+            "side": self.side,
+            "qty": self.qty,
+            "entry_price": self.entry_price,
+            "exit_price": self.exit_price,
+            "stop_loss": self.stop_loss,
+            "take_profit": self.take_profit,
+            "leverage": self.leverage,
+            "margin": self.margin_usdt,
+            "pnl": self.pnl,
+            "timestamp": self.timestamp.strftime("%Y-%m-%d %H:%M:%S") if self.timestamp else None,
+            "status": self.status,
+            "order_id": self.order_id,
+            "virtual": self.virtual,
+        }
 
 class Portfolio(Base):
     __tablename__ = 'portfolio'
@@ -61,6 +95,15 @@ class Portfolio(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     capital: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
 
+    def to_dict(self):
+        return {
+            "symbol": self.symbol,
+            "qty": self.qty,
+            "avg_price": self.avg_price,
+            "value": self.value,
+            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None,
+            "capital": self.capital,
+        }
 
 class SystemSetting(Base):
     __tablename__ = 'settings'
