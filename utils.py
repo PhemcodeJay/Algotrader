@@ -224,3 +224,49 @@ def serialize_datetimes(obj):
     elif isinstance(obj, datetime):
         return obj.isoformat()
     return obj
+
+def validate_trading_parameters(tp_pct, sl_pct, leverage):
+    """Validate trading parameters"""
+    errors = []
+    
+    if tp_pct <= 0:
+        errors.append("Take profit percentage must be positive")
+    
+    if sl_pct <= 0:
+        errors.append("Stop loss percentage must be positive")
+    
+    if leverage < 1 or leverage > 50:
+        errors.append("Leverage must be between 1 and 50")
+    
+    if tp_pct <= sl_pct:
+        errors.append("Take profit should be greater than stop loss")
+    
+    return errors
+
+def calculate_position_size(capital, risk_pct, entry_price, sl_price):
+    """Calculate position size based on risk management"""
+    try:
+        risk_amount = capital * (risk_pct / 100)
+        risk_per_unit = abs(entry_price - sl_price)
+        
+        if risk_per_unit <= 0:
+            return 0
+        
+        position_size = risk_amount / risk_per_unit
+        return round(position_size, 6)
+    
+    except (TypeError, ZeroDivisionError):
+        return 0
+
+def get_signal_strength_text(confidence):
+    """Get signal strength description"""
+    if confidence >= 90:
+        return "🔥 Very Strong"
+    elif confidence >= 85:
+        return "💪 Strong"
+    elif confidence >= 75:
+        return "👍 Good"
+    elif confidence >= 65:
+        return "⚠️ Weak"
+    else:
+        return "❌ Very Weak"

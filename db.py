@@ -12,7 +12,6 @@ from sqlalchemy.orm import (
 Base = declarative_base()
 
 # === SQLAlchemy Models ===
-
 class Signal(Base):
     __tablename__ = 'signals'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -25,7 +24,7 @@ class Signal(Base):
     side: Mapped[str] = mapped_column(String, default="LONG")
     sl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     tp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    leverage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    leverage: Mapped[Optional[int]] = mapped_column(Integer, default=20)
     margin_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     entry: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     market: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -332,6 +331,23 @@ class DatabaseManager:
             return {"status": "ok"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+        
+    def update_automation_stats(self, stats_dict: dict):
+        """Update automation stats in DB under the 'AUTOMATION_STATS' key."""
+        session: Session = self.Session()
+        try:
+            setting = session.query(SystemSetting).filter_by(key="AUTOMATION_STATS").first()
+            if setting:
+                setting.value = json.dumps(stats_dict)
+            else:
+                setting = SystemSetting(key="AUTOMATION_STATS", value=json.dumps(stats_dict))
+                session.add(setting)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
 
 # === Global Instance ===

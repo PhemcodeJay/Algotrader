@@ -233,8 +233,8 @@ def main():
         else:
             print("⚠️ No valid signals found\n")
 
-        wait = 900
-        print("⏳ Rescanning in 15 minutes...")
+        wait = 3600
+        print("⏳ Rescanning in 60 minutes...")
         for i in range(wait, 0, -1):
             sys.stdout.write(f"\r⏱️  Next scan in {i//60:02d}:{i%60:02d}")
             sys.stdout.flush()

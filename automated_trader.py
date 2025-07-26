@@ -16,7 +16,7 @@ class AutomatedTrader:
         self.automation_thread = None
 
         # === Automation Settings from DB ===
-        self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 900)
+        self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 3600)
         self.max_signals = int(self.db.get_setting("TOP_N_SIGNALS") or 5)
         self.max_drawdown_limit = float(self.db.get_setting("MAX_DRAWDOWN") or 20)
         self.max_daily_trades = int(self.db.get_setting("MAX_DAILY_TRADES") or 50)
@@ -178,7 +178,7 @@ class AutomatedTrader:
             self.db.set_setting(key, value)
 
         # Reload
-        self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 900)
+        self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 3600)
         self.max_signals = int(self.db.get_setting("TOP_N_SIGNALS") or 5)
         self.max_drawdown_limit = float(self.db.get_setting("MAX_DRAWDOWN") or 20)
         self.max_daily_trades = int(self.db.get_setting("MAX_DAILY_TRADES") or 50)

@@ -17,7 +17,7 @@ from utils import send_discord_message, send_telegram_message, serialize_datetim
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-DEFAULT_SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 900))  # 15 minutes
+DEFAULT_SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 3600))  # 60 minutes
 DEFAULT_TOP_N_SIGNALS = int(os.getenv("TOP_N_SIGNALS", 5))
 
 
@@ -207,6 +207,11 @@ class TradingEngine:
                 "status": "open",
                 "order_id": order.get("order_id", "") if order else "",
                 "virtual": not is_real,
+                # Added fields:
+                "sl": signal.get("SL"),
+                "tp": signal.get("TP"),
+                "leverage": signal.get("leverage"),
+                "margin_usdt": signal.get("margin"),
             }
 
             self.db.add_trade(trade)
@@ -221,6 +226,7 @@ class TradingEngine:
             self.client.monitor_virtual_orders()
 
         return top_signals
+
 
     def run_loop(self):
         print("[Engine] ♻️ Starting scan loop...")
