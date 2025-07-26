@@ -1,19 +1,19 @@
 import os
 import time
 import json
-from datetime import datetime
-from dotenv import load_dotenv
 import logging
+from datetime import datetime, timezone
+from dotenv import load_dotenv
 
 import db
 import signal_generator
 from signal_generator import get_usdt_symbols, analyze
 from bybit_client import BybitClient
 from ml import MLFilter
+from utils import send_discord_message, send_telegram_message, serialize_datetimes
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from utils import send_discord_message, send_telegram_message
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -131,12 +131,25 @@ class TradingEngine:
                     f"({enhanced.get('Side')} @ {enhanced.get('Entry')}) → "
                     f"Score: {enhanced.get('score')}%"
                 )
+
+                # Serialize datetime fields in indicators
+                indicators_clean = serialize_datetimes(enhanced)
+
                 self.db.add_signal({
                     "symbol": enhanced.get("Symbol", ""),
                     "interval": enhanced.get("Interval", "15m"),
                     "signal_type": enhanced.get("Side", ""),
                     "score": enhanced.get("score", 0.0),
-                    "indicators": enhanced,
+                    "indicators": indicators_clean,
+                    "strategy": enhanced.get("strategy", "Default"),
+                    "side": enhanced.get("Side", "LONG"),
+                    "sl": enhanced.get("SL"),
+                    "tp": enhanced.get("TP"),
+                    "entry": enhanced.get("Entry"),
+                    "leverage": enhanced.get("leverage"),
+                    "margin_usdt": enhanced.get("margin"),
+                    "market": enhanced.get("market", "bybit"),
+                    "created_at": datetime.now(timezone.utc),
                 })
 
                 self.save_signal_pdf(enhanced)
@@ -176,7 +189,7 @@ class TradingEngine:
                 "entry_price": signal.get("Entry", 0.0),
                 "exit_price": None,
                 "pnl": None,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(timezone.utc),
                 "status": "open",
                 "order_id": order.get("order_id", "") if order else "",
                 "virtual": not is_real,

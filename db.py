@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import List, Optional, Dict
 from sqlalchemy import (
     create_engine, String, Integer, Float, DateTime, Boolean, JSON, text
@@ -29,7 +29,7 @@ class Signal(Base):
     margin_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     entry: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     market: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Trade(Base):
@@ -45,7 +45,7 @@ class Trade(Base):
     leverage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     margin_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     status: Mapped[str] = mapped_column(String)
     order_id: Mapped[str] = mapped_column(String)
     virtual: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -58,7 +58,7 @@ class Portfolio(Base):
     qty: Mapped[float] = mapped_column(Float)
     avg_price: Mapped[float] = mapped_column(Float)
     value: Mapped[float] = mapped_column(Float)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     capital: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
 
 
@@ -75,6 +75,18 @@ db_url = os.getenv("DATABASE_URL", "sqlite:///trading.db")
 engine = create_engine(db_url, echo=False)
 SessionLocal = sessionmaker(bind=engine)
 Base.metadata.create_all(engine)
+
+
+# === Utility ===
+
+def serialize_datetimes(obj):
+    if isinstance(obj, dict):
+        return {k: serialize_datetimes(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_datetimes(i) for i in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
 
 
 # === Database Manager ===
@@ -100,6 +112,7 @@ class DatabaseManager:
         return self.Session()
 
     def add_signal(self, signal_data: Dict):
+        signal_data["indicators"] = serialize_datetimes(signal_data.get("indicators", {}))
         with self.get_session() as session:
             signal = Signal(**signal_data)
             session.add(signal)
@@ -155,14 +168,14 @@ class DatabaseManager:
                 portfolio.qty = qty
                 portfolio.avg_price = avg_price
                 portfolio.value = value
-                portfolio.updated_at = datetime.now()
+                portfolio.updated_at = datetime.now(timezone.utc)
             else:
                 portfolio = Portfolio(
                     symbol=symbol,
                     qty=qty,
                     avg_price=avg_price,
                     value=value,
-                    updated_at=datetime.now()
+                    updated_at=datetime.now(timezone.utc)
                 )
                 session.add(portfolio)
             session.commit()
@@ -205,7 +218,7 @@ class DatabaseManager:
             today = date.today()
             trades = session.query(Trade).filter(
                 Trade.status == 'closed',
-                Trade.timestamp >= datetime(today.year, today.month, today.day)
+                Trade.timestamp >= datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
             ).all()
 
             total_pnl = sum(t.pnl for t in trades if t.pnl is not None)
@@ -276,6 +289,7 @@ class DatabaseManager:
             return {"status": "ok"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
 
 # === Global Instance ===
 db_manager = DatabaseManager(db_url=db_url)

@@ -211,3 +211,16 @@ def send_telegram_message(message: str, parse_mode: str = "HTML") -> None:
         print("✅ Telegram message sent.")
     except Exception as e:
         print(f"❌ Failed to send Telegram message: {e}")
+
+def serialize_datetimes(obj):
+    """
+    Recursively converts all datetime objects in a dictionary or list
+    into ISO 8601 string format (UTC-safe).
+    """
+    if isinstance(obj, dict):
+        return {k: serialize_datetimes(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_datetimes(i) for i in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
