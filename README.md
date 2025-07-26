@@ -1,8 +1,10 @@
-📈 AlgoTrader - Crypto Signal Scanner & Auto-Trading Engine
+---
 
-`ALGOTRADER` is a **real-time crypto signal and trading engine** that blends **multi-timeframe technical analysis**, **machine learning signal filtering**, and **Bybit USDT futures execution** into one automated loop.
+# 📈 AlgoTrader – Crypto Signal Scanner & Auto-Trading Engine
 
-It scans high-volume crypto pairs on Bybit, identifies strong entries using indicators like EMA, RSI, MACD, ATR, and Bollinger Bands, ranks signals by score and confidence, filters them using ML, then executes real or virtual trades. It logs everything to a PostgreSQL database and exports signal reports to PDF, Discord, and TELEGRAM.
+`AlgoTrader` is a **real-time crypto signal and trading engine** combining **multi-timeframe technical analysis**, **machine learning-based signal filtering**, and **Bybit USDT futures trading** into one automated loop.
+
+It scans top-volume USDT pairs on Bybit, generates high-quality signals using technical indicators (EMA, RSI, MACD, ATR, Bollinger Bands), ranks them by score and confidence, filters them using ML, then executes real or simulated trades. It logs every action to PostgreSQL and JSON, and exports reports as PDF + social alerts via Discord and Telegram.
 
 ---
 
@@ -14,48 +16,49 @@ It scans high-volume crypto pairs on Bybit, identifies strong entries using indi
   * EMA (9, 21), SMA (20)
   * RSI, MACD, ATR
   * Bollinger Bands
-  * Trend detection and breakout regime classification
+  * Trend detection & breakout classification
 
 * 🧠 **ML-Based Signal Filtering**
-  Each signal passes through `MLFilter` for scoring enhancement and filtering based on Z-score, confidence, and historical performance.
+  Uses `MLFilter` for score boosting and filtering based on:
+
+  * Z-score thresholds
+  * Confidence level
+  * Historical win rate
 
 * 💹 **Hybrid Trading Engine**
-  Trades can be executed in:
 
-  * **REAL mode**: via Bybit API
-  * **VIRTUAL mode**: simulated in memory
+  * **REAL mode**: Executes trades via Bybit API
+  * **VIRTUAL mode**: Simulated trades in-memory
 
-* 📦 **PostgreSQL + JSON Logging**
-  Signals and trades are stored in:
+* 🧾 **Logging: PostgreSQL + JSON**
 
-  * PostgreSQL (via SQLAlchemy)
-  * JSON files for redundancy and traceability
+  * All trades/signals logged to PostgreSQL (via SQLAlchemy)
+  * JSON backups for redundancy
 
-* 📤 **PDF Signal Reports + Social Posting**
+* 📤 **Signal Reporting + Alerts**
 
-  * Top 20 signals saved to `/reports/*.pdf`
-  * Top 5 signals sent to **Discord** and **TELEGRAM**
+  * Top 20 signals exported to `/reports/*.pdf`
+  * Top 5 signals auto-posted to **Discord** and **Telegram**
 
-* 📈 **Smart Trade Structuring**
-  Signals include:
+* 🧩 **Smart Trade Structuring**
 
-  * Entry, TP, SL, trailing stop
-  * Trend type: Scalp / Swing / Trend
-  * Risk regime: Mean vs. Breakout
+  * Signals include TP, SL, trailing stop
+  * Classified by trend type (Scalp / Swing / Trend)
+  * Tagged by market regime (Mean vs. Breakout)
 
 ---
 
 ## 🧱 Project Structure
 
 ```
-├── hybrid_engine.py       # Main engine (entry point)
-├── database.py            # SQLAlchemy ORM manager
-├── bybit_client.py        # Trading interface (real/virtual)
-├── data_provider.py       # OHLCV + price feed from Bybit
-├── exports.py             # PDF export + Discord/TELEGRAM hooks
-├── ml.py                  # Signal filtering + scoring enhancement
-├── utils.py               # Helpers: pricing, JSON saving, etc.
-├── reports/               # Exported signal PDFs
+├── hybrid_engine.py       # Main engine logic
+├── database.py            # SQLAlchemy ORM + DB manager
+├── bybit_client.py        # Real/virtual Bybit interface
+├── data_provider.py       # OHLCV feed from Bybit
+├── exports.py             # PDF exports + social hooks
+├── ml.py                  # ML filter logic
+├── utils.py               # Helpers: JSON, math, etc.
+├── reports/               # Generated PDFs
 ├── signals/               # Signal logs (JSON)
 ├── trades/                # Trade logs (JSON)
 ```
@@ -64,17 +67,17 @@ It scans high-volume crypto pairs on Bybit, identifies strong entries using indi
 
 ## ⚙️ Configuration
 
-| Parameter               | Description                              | Default      |
-| ----------------------- | ---------------------------------------- | ------------ |
-| `REAL_MODE`             | Enables real Bybit trading               | `false`      |
-| `ML_ENABLED`            | Enables ML signal enhancement            | `true`       |
-| `TOP_SYMBOL_LIMIT`      | Top Bybit USDT symbols by volume to scan | `100`        |
-| `TOP_TERMINAL_LIMIT`    | Signals shown in terminal                | `5`          |
-| `TOP_PDF_LIMIT`         | Signals exported to PDF                  | `20`         |
-| `SCAN_INTERVAL_MINUTES` | Time between each scan                   | `15`         |
-| `UTC_OFFSET`            | Timezone offset for logging              | `+3` (UTC+3) |
+| Parameter               | Description                   | Default      |
+| ----------------------- | ----------------------------- | ------------ |
+| `REAL_MODE`             | Enables live Bybit trading    | `false`      |
+| `ML_ENABLED`            | Enables ML signal enhancement | `true`       |
+| `TOP_SYMBOL_LIMIT`      | # of Bybit USDT pairs to scan | `100`        |
+| `TOP_TERMINAL_LIMIT`    | Signals printed to terminal   | `5`          |
+| `TOP_PDF_LIMIT`         | Signals exported to PDF       | `20`         |
+| `SCAN_INTERVAL_MINUTES` | Scan interval in minutes      | `15`         |
+| `UTC_OFFSET`            | Timezone for logs             | `+3 (UTC+3)` |
 
-Set environment variables in your `.env`:
+Set in your `.env`:
 
 ```env
 REAL_MODE=false
@@ -85,33 +88,33 @@ ML_ENABLED=true
 
 ## 📈 Signal Logic
 
-A signal is considered valid only if:
+A signal is **valid** if:
 
-* Trend direction is **consistent** across 15m, 1h, and 4h timeframes
-* Signal passes the **ML filter**
-* Final **Score ≥ 60** and **Confidence ≥ 70**
+* Trend aligns on 15m, 1h, and 4h
+* ML filter approves it
+* Score ≥ 60 **and** Confidence ≥ 70
 
-Each signal includes:
+Each signal contains:
 
 * `symbol`, `side` (LONG/SHORT)
 * `entry`, `tp`, `sl`, `trail`
 * `score`, `confidence`, `margin`, `liq_price`
-* `trend`, `regime` (Mean/Breakout), `type` (Scalp/Swing/Trend)
+* `trend`, `regime`, `type`
 * Timestamp (UTC+3)
 
 ---
 
 ## 🛒 Trade Execution
 
-Trades are placed with the following logic:
+Trade logic:
 
 * Position size = `(wallet_balance * 0.75) / entry_price`
-* Orders include TP, SL, and trailing stop
-* Order results are captured:
+* Orders contain: TP, SL, trailing stop
+* Execution:
 
-  * If `REAL_MODE=true`: executes on Bybit
-  * If `REAL_MODE=false`: simulates execution
-* All trades are saved to DB and `trades/*.json`
+  * If `REAL_MODE=true`: Uses Bybit API
+  * If `REAL_MODE=false`: Simulated trade
+* Saved to DB and `/trades/*.json`
 
 ---
 
@@ -119,17 +122,19 @@ Trades are placed with the following logic:
 
 After each scan:
 
-* ✅ Top 5 signals are:
+* ✅ Top 5 signals:
 
-  * Printed to terminal
-  * Posted to Discord & TELEGRAM
-* 📝 Top 20 signals are:
+  * Printed in terminal
+  * Sent to **Discord** and **Telegram**
 
-  * Exported to PDF (`/reports/signals_<timestamp>.pdf`)
-* 🧠 All valid signals are:
+* 📝 Top 20 signals:
 
-  * Saved to JSON in `/signals/`
-  * Logged in PostgreSQL via `db_manager`
+  * Exported to PDF at `/reports/signals_<timestamp>.pdf`
+
+* 🧠 All valid signals:
+
+  * Saved in `/signals/*.json`
+  * Logged to PostgreSQL (`DatabaseManager`)
 
 ---
 
@@ -141,24 +146,25 @@ Run with:
 python app.py
 ```
 
-Every 15 minutes, the engine performs:
+Loop every 15 minutes:
 
-1. Get top Bybit symbols by volume
+1. Get top symbols by USDT volume
 2. Fetch multi-timeframe OHLCV
-3. Compute indicators
-4. Generate and filter signals
-5. Display/log/export/alert
-6. Auto-place trades
-7. Sleep for `SCAN_INTERVAL_MINUTES`
+3. Run indicators & generate signals
+4. Filter + score with ML
+5. Export / alert / log
+6. Auto-trade if valid
+7. Wait `SCAN_INTERVAL_MINUTES`
 
 ---
 
 ## ✅ Requirements
 
 * Python 3.9+
-* Bybit API keys via `.env`
-* PostgreSQL database (configured in `database.py`)
-* Install dependencies:
+* Bybit API keys in `.env`
+* PostgreSQL (configured in `database.py`)
+
+Install dependencies:
 
 ```bash
 pip install ta numpy pandas sqlalchemy pybit praw reportlab python-dotenv
@@ -168,29 +174,29 @@ pip install ta numpy pandas sqlalchemy pybit praw reportlab python-dotenv
 
 ## 📌 Notes
 
-* Works with both real and paper trading accounts
-* Ideal for swing/short-term futures strategies
-* Fully modular: you can extend each component individually
-* Use `.env` to switch modes and enable/disable ML logic
+* Compatible with both paper and real trading
+* Modular design for easy extension
+* `.env` switches between modes
+* Optimized for short- and swing-term futures strategies
 
 ---
 
 ## 🧠 Future Enhancements
 
-* Backtest mode with historical OHLCV
-* Telegram Bot alerts
-* Portfolio rebalancing & optimization
-* Configurable strategy presets (Scalp / Trend / Mean Reversion)
-* Web dashboard with Streamlit integration
+* Historical backtest mode
+* Telegram Bot with commands
+* Portfolio rebalancing + optimizer
+* Strategy presets: Scalp / Trend / Mean Reversion
+* Streamlit Web Dashboard (UI + Analytics)
 
 ---
 
 ## 📫 Contact
 
 **Developer**: OL'PHEMIE JEGEDE
-**Project**: `AlgoTrader - Crypto Engine Suite`
-**Platform**: Bybit USDT Futures
+**Project**: `AlgoTrader – Crypto Engine Suite`
+**Exchange**: Bybit (USDT Perpetual Futures)
 
-For support, collaboration, or API help — feel free to reach out!
+For collaboration, support, or custom strategy dev — feel free to reach out!
 
 ---
