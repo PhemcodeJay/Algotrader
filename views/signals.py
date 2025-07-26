@@ -63,10 +63,10 @@ def render(trading_engine, dashboard, db_manager):
                         trading_engine.post_signal_to_discord(s)
                     st.success("Posted top 5 to Discord!")
             with col2:
-                if st.button("📤 Export to Reddit"):
+                if st.button("📤 Export to Telegram"):
                     for s in filtered[:5]:
-                        trading_engine.post_signal_to_reddit(s)
-                    st.success("Posted top 5 to Reddit!")
+                        trading_engine.post_signal_to_telegram(s)
+                    st.success("Posted top 5 to Telegram!")
             with col3:
                 if st.button("📄 Export PDF"):
                     path = trading_engine.export_signals_pdf(filtered)

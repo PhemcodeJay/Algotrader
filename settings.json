@@ -1,5 +1,5 @@
 {
-    "SCAN_INTERVAL": 900,
+    "SCAN_INTERVAL": 3600,
     "TOP_N_SIGNALS": 5,
     "MAX_LOSS_PCT": -15.0,
     "TP_PERCENT": 0.30,
