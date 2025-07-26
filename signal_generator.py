@@ -1,8 +1,8 @@
 import requests
-from fpdf import FPDF
 from datetime import datetime, timedelta, timezone
 from time import sleep
 import pytz
+from db import SessionLocal, Signal  # Make sure these are defined in db.py
 
 # === CONFIGURATION ===
 RISK_PCT = 0.15
@@ -14,43 +14,36 @@ MIN_ATR_PCT = 0.001
 RSI_ZONE = (20, 80)
 INTERVALS = ['15m', '1h', '4h']
 MAX_SYMBOLS = 100
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1392538366570135594/lwRHMnC6D1nBMnpXhxf_bdMO0PacPIZxh7-yuKv1OvQm_WhagXAwmCUR9oRpU9sIg4WH"
-TELEGRAM_BOT_TOKEN = "8160938302:AAFUmPahGk14OY8F1v5FLHGoVRD-pGTvSOY"
-TELEGRAM_CHAT_ID = "5852301284"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
 
 tz_utc3 = timezone(timedelta(hours=3))
 
-# === DISCORD / TELEGRAM NOTIFY ===
+# === NOTIFICATIONS ===
 def send_discord(message):
-    if not DISCORD_WEBHOOK_URL:
-        return
-    try:
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
-    except Exception as e:
-        print(f"Discord error: {e}")
+    if DISCORD_WEBHOOK_URL:
+        try:
+            requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
+        except Exception as e:
+            print(f"Discord error: {e}")
 
 def send_telegram(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        })
-    except:
-        pass
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            requests.post(url, data={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": message,
+                "parse_mode": "Markdown"
+            })
+        except:
+            pass
 
-# === BYBIT CANDLES FETCH ===
+# === BYBIT DATA ===
 def get_candles(sym, interval):
-    interval_map = {
-        "15m": "15",
-        "1h": "60",
-        "4h": "240"
-    }
-    bybit_interval = interval_map.get(interval, "60")
-    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={sym}&interval={bybit_interval}&limit=200"
+    interval_map = {"15m": "15", "1h": "60", "4h": "240"}
+    url = f"https://api.bybit.com/v5/market/kline?category=linear&symbol={sym}&interval={interval_map[interval]}&limit=200"
     try:
         res = requests.get(url)
         data = res.json().get('result', {}).get('list', [])
@@ -61,7 +54,7 @@ def get_candles(sym, interval):
             'volume': float(c[6])
         } for c in data]
     except Exception as e:
-        print(f"Failed to fetch candles for {sym} ({interval}): {e}")
+        print(f"Failed to fetch {sym} candles: {e}")
         return []
 
 # === INDICATORS ===
@@ -75,15 +68,13 @@ def ema(prices, period):
     return val
 
 def sma(prices, period):
-    if len(prices) < period:
-        return None
-    return sum(prices[-period:]) / period
+    return sum(prices[-period:]) / period if len(prices) >= period else None
 
 def rsi(prices, period=14):
     if len(prices) < period + 1:
         return None
-    gains = [max(prices[i] - prices[i - 1], 0) for i in range(1, period + 1)]
-    losses = [max(prices[i - 1] - prices[i], 0) for i in range(1, period + 1)]
+    gains = [max(prices[i] - prices[i-1], 0) for i in range(1, period + 1)]
+    losses = [max(prices[i-1] - prices[i], 0) for i in range(1, period + 1)]
     ag, al = sum(gains) / period, sum(losses) / period
     rs = ag / (al + 1e-10)
     return 100 - (100 / (1 + rs))
@@ -108,18 +99,16 @@ def atr(highs, lows, closes, period=14):
 def macd(prices):
     fast = ema(prices, 12)
     slow = ema(prices, 26)
-    if fast is None or slow is None:
-        return None
-    return fast - slow
+    return fast - slow if fast and slow else None
 
 def classify_trend(ema9, ema21, sma20):
     if ema9 > ema21 > sma20:
         return "Trend"
-    if ema9 > ema21:
+    elif ema9 > ema21:
         return "Swing"
     return "Scalp"
 
-# === ANALYZE ONE SYMBOL ===
+# === ANALYSIS ===
 def analyze(symbol):
     data = {}
     for tf in INTERVALS:
@@ -145,10 +134,8 @@ def analyze(symbol):
             'volume': volumes[-1]
         }
 
-    tf60 = data['1h']
-    if (tf60['volume'] < MIN_VOLUME or
-        tf60['atr'] / tf60['close'] < MIN_ATR_PCT or
-        not (RSI_ZONE[0] < tf60['rsi'] < RSI_ZONE[1])):
+    tf = data['1h']
+    if tf['volume'] < MIN_VOLUME or tf['atr'] / tf['close'] < MIN_ATR_PCT or not (RSI_ZONE[0] < tf['rsi'] < RSI_ZONE[1]):
         return None
 
     sides = []
@@ -165,15 +152,12 @@ def analyze(symbol):
     if len(set(sides)) != 1:
         return None
 
-    tf = tf60
+    side = sides[0]
     price = tf['close']
     trend = classify_trend(tf['ema9'], tf['ema21'], tf['sma20'])
     bb_dir = "Up" if price > tf['bb_up'] else "Down" if price < tf['bb_low'] else "No"
 
-    opts = [('sma20', tf['sma20']), ('ema9', tf['ema9']), ('ema21', tf['ema21'])]
-    entry = min((e for e in opts if e[1]), key=lambda x: abs(x[1] - price))[1]
-
-    side = 'LONG' if sides[0] == 'LONG' else 'SHORT'
+    entry = min((v for v in [tf['sma20'], tf['ema9'], tf['ema21']] if v), key=lambda x: abs(x - price))
     tp = round(entry * (1.015 if side == 'LONG' else 0.985), 6)
     sl = round(entry * (0.985 if side == 'LONG' else 1.015), 6)
     trail = round(entry * (1 - ENTRY_BUFFER_PCT) if side == 'LONG' else entry * (1 + ENTRY_BUFFER_PCT), 6)
@@ -187,38 +171,50 @@ def analyze(symbol):
     score += 0.2 if trend == "Trend" else 0.1
 
     return {
-        'Symbol': symbol,
-        'Side': side,
-        'Type': trend,
-        'Score': round(score * 100, 1),
-        'Entry': round(entry, 6),
-        'TP': tp,
-        'SL': sl,
-        'Trail': trail,
-        'Margin': margin,
-        'Market': price,
-        'Liq': liq,
-        'BB Slope': bb_dir,
-        'Time': datetime.now(tz_utc3).strftime("%Y-%m-%d %H:%M UTC+3")
+        'symbol': symbol,
+        'side': side,
+        'type': trend,
+        'score': round(score * 100, 1),
+        'entry': round(entry, 6),
+        'tp': tp,
+        'sl': sl,
+        'trail': trail,
+        'margin': margin,
+        'market': price,
+        'liq': liq,
+        'bb_slope': bb_dir,
+        'time': datetime.now(tz_utc3)
     }
 
-# === GET BYBIT SYMBOLS ===
+# === FETCH SYMBOLS ===
 def get_usdt_symbols():
     try:
         url = "https://api.bybit.com/v5/market/tickers?category=linear"
         res = requests.get(url)
-        data = res.json().get('result', {}).get('list', [])
-        tickers = [x for x in data if x['symbol'].endswith("USDT")]
-        sorted_tickers = sorted(tickers, key=lambda x: float(x['turnover24h']), reverse=True)
-        return [x['symbol'] for x in sorted_tickers[:MAX_SYMBOLS]]
+        tickers = res.json().get('result', {}).get('list', [])
+        return [t['symbol'] for t in sorted(tickers, key=lambda x: float(x['turnover24h']), reverse=True) if t['symbol'].endswith("USDT")][:MAX_SYMBOLS]
     except Exception as e:
-        print(f"Failed to get USDT symbols: {e}")
+        print(f"Symbol fetch failed: {e}")
         return []
+
+# === SAVE SIGNAL TO DB ===
+def save_signal_to_db(sig_data):
+    session = SessionLocal()
+    try:
+        signal = Signal(**sig_data)
+        session.add(signal)
+        session.commit()
+        print(f"✅ Saved: {sig_data['symbol']}")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ DB Save error: {e}")
+    finally:
+        session.close()
 
 # === MAIN LOOP ===
 def main():
     while True:
-        print("\n🔍 Scanning Bybit USDT Perpetuals for filtered signals...\n")
+        print("\n🔍 Scanning Bybit USDT Perpetuals...\n")
         syms = get_usdt_symbols()
         signals = []
 
@@ -226,39 +222,29 @@ def main():
             sig = analyze(sym)
             if sig:
                 signals.append(sig)
+                save_signal_to_db(sig)
             sleep(0.3)
 
         if signals:
-            signals.sort(key=lambda x: x['Score'], reverse=True)
+            signals.sort(key=lambda x: x['score'], reverse=True)
             top5 = signals[:5]
-
-            for s in top5:
-                print(f"""
-==================== {s['Symbol']} ====================
-📊 TYPE: {s['Type']}     📈 SIDE: {s['Side']}     🏆 SCORE: {s['Score']}%
-💵 ENTRY: {s['Entry']}   🎯 TP: {s['TP']}         🛡️ SL: {s['SL']}
-💱 MARKET: {s['Market']} 📍 BB: {s['BB Slope']}    🔄 Trail: {s['Trail']}
-⚖️ MARGIN: {s['Margin']} ⚠️ LIQ: {s['Liq']}
-⏰ TIME: {s['Time']}
-=========================================================
-""")
             top_msg = "\n\n".join([f"""
-==================== {s['Symbol']} ====================
-📊 TYPE: {s['Type']}     📈 SIDE: {s['Side']}     🏆 SCORE: {s['Score']}%
-💵 ENTRY: {s['Entry']}   🎯 TP: {s['TP']}         🛡️ SL: {s['SL']}
-💱 MARKET: {s['Market']} 📍 BB: {s['BB Slope']}    🔄 Trail: {s['Trail']}
-⚖️ MARGIN: {s['Margin']} ⚠️ LIQ: {s['Liq']}
-⏰ TIME: {s['Time']}
+==================== {s['symbol']} ====================
+📊 TYPE: {s['type']}     📈 SIDE: {s['side']}     🏆 SCORE: {s['score']}%
+💵 ENTRY: {s['entry']}   🎯 TP: {s['tp']}         🛡️ SL: {s['sl']}
+💱 MARKET: {s['market']} 📍 BB: {s['bb_slope']}    🔄 Trail: {s['trail']}
+⚖️ MARGIN: {s['margin']} ⚠️ LIQ: {s['liq']}
+⏰ TIME: {s['time'].strftime('%Y-%m-%d %H:%M UTC+3')}
 =========================================================""" for s in top5])
 
-            send_discord(f"📊 **Latest Signals**\n\n{top_msg}")
-            send_telegram(f"📊 **Latest Signals**\n\n{top_msg}")
-            print("♻️ Signals Sent to Discord & Telegram...\n")
+            send_discord(f"📊 **Top Signals**\n\n{top_msg}")
+            send_telegram(f"📊 *Top Signals*\n\n{top_msg}")
+            print("📤 Signals sent to Discord & Telegram.")
         else:
-            print("⚠️ No valid signals found")
+            print("⚠️ No valid signals.")
 
-        print("♻️ Rescanning in 15 minutes...\n")
-        sleep(900)
+        print("♻️ Rescanning in 60 minutes...\n")
+        sleep(3600)
 
 if __name__ == "__main__":
     main()

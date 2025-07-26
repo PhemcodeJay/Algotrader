@@ -2,9 +2,12 @@ import os
 import json
 from datetime import datetime, date
 from typing import List, Optional, Dict
-from sqlalchemy import create_engine, String, Integer, Float, DateTime, Boolean, JSON, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, Mapped, mapped_column
-from sqlalchemy import func 
+from sqlalchemy import (
+    create_engine, String, Integer, Float, DateTime, Boolean, JSON, text
+)
+from sqlalchemy.orm import (
+    declarative_base, sessionmaker, Session, Mapped, mapped_column
+)
 
 Base = declarative_base()
 
@@ -12,15 +15,20 @@ Base = declarative_base()
 
 class Signal(Base):
     __tablename__ = 'signals'
-    
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String)
     interval: Mapped[str] = mapped_column(String)
     signal_type: Mapped[str] = mapped_column(String)
     score: Mapped[float] = mapped_column(Float)
     indicators: Mapped[dict] = mapped_column(JSON)
-    strategy: Mapped[str] = mapped_column(String, default="Default")  # ✅ New field
-    side: Mapped[str] = mapped_column(String, default="LONG")         # ✅ New field
+    strategy: Mapped[str] = mapped_column(String, default="Default")
+    side: Mapped[str] = mapped_column(String, default="LONG")
+    sl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    tp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    leverage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    margin_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    entry: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    market: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
@@ -32,6 +40,10 @@ class Trade(Base):
     qty: Mapped[float] = mapped_column(Float)
     entry_price: Mapped[float] = mapped_column(Float)
     exit_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    stop_loss: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    take_profit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    leverage: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    margin_usdt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pnl: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     status: Mapped[str] = mapped_column(String)
@@ -57,21 +69,30 @@ class SystemSetting(Base):
     value: Mapped[str] = mapped_column(String)
 
 
+# === Engine + SessionLocal ===
+
+db_url = os.getenv("DATABASE_URL", "sqlite:///trading.db")
+engine = create_engine(db_url, echo=False)
+SessionLocal = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
+
+
 # === Database Manager ===
 
 class DatabaseManager:
     def __init__(self, db_url: str):
         self.engine = create_engine(db_url, echo=False)
         self.Session = sessionmaker(bind=self.engine)
-        Base.metadata.create_all(self.engine)  # Run only once or on migration
+        Base.metadata.create_all(self.engine)
+
         self.settings = {
-            "SCAN_INTERVAL": 900,       # 15 minutes
+            "SCAN_INTERVAL": 3600,
             "TOP_N_SIGNALS": 5,
             "MAX_LOSS_PCT": -15.0,
-            "TP_PERCENT": 0.30,         # 30%
-            "SL_PERCENT": 0.15,         # 15%
-            "LEVERAGE": 20,          # 20x leverage
-            "RISK_PER_TRADE": 0.01,     # 1%
+            "TP_PERCENT": 0.30,
+            "SL_PERCENT": 0.15,
+            "LEVERAGE": 20,
+            "RISK_PER_TRADE": 0.01,
         }
         self._load_settings_from_file()
 
@@ -84,23 +105,19 @@ class DatabaseManager:
             session.add(signal)
             session.commit()
 
+    def get_last_signal(self, symbol: Optional[str] = None) -> Optional[Signal]:
+        with self.get_session() as session:
+            query = session.query(Signal).order_by(Signal.created_at.desc())
+            if symbol:
+                query = query.filter(Signal.symbol == symbol)
+            return query.first()
+
     def get_signals(self, symbol: Optional[str] = None, limit: int = 50) -> List[Signal]:
         with self.get_session() as session:
             query = session.query(Signal).order_by(Signal.created_at.desc())
             if symbol:
                 query = query.filter(Signal.symbol == symbol)
             return query.limit(limit).all()
-        
-    def get_popular_symbols(self, limit: int = 10) -> List[str]:
-        with self.get_session() as session:
-            results = (
-                session.query(Trade.symbol, func.count(Trade.symbol).label("symbol_count"))
-                .group_by(Trade.symbol)
-                .order_by(func.count(Trade.symbol).desc())
-                .limit(limit)
-                .all()
-            )
-            return [symbol for symbol, _ in results]
 
     def add_trade(self, trade_data: Dict):
         with self.get_session() as session:
@@ -114,10 +131,22 @@ class DatabaseManager:
             if symbol:
                 query = query.filter(Trade.symbol == symbol)
             return query.limit(limit).all()
-        
-    def get_recent_trades(self, limit: int = 10) -> List[Trade]:
+
+    def get_recent_trades(self, symbol: Optional[str] = None, limit: int = 50) -> List[Trade]:
+        return self.get_trades(symbol=symbol, limit=limit)
+
+    def get_open_trades(self) -> List[Trade]:
         with self.get_session() as session:
-            return session.query(Trade).order_by(Trade.timestamp.desc()).limit(limit).all()
+            return session.query(Trade).filter(Trade.status == 'open').all()
+
+    def close_trade(self, order_id: str, exit_price: float, pnl: float):
+        with self.get_session() as session:
+            trade = session.query(Trade).filter_by(order_id=order_id).first()
+            if trade:
+                trade.exit_price = exit_price
+                trade.pnl = pnl
+                trade.status = 'closed'
+                session.commit()
 
     def update_portfolio_balance(self, symbol: str, qty: float, avg_price: float, value: float):
         with self.get_session() as session:
@@ -164,19 +193,6 @@ class DatabaseManager:
             settings = session.query(SystemSetting).all()
             return {s.key: s.value for s in settings}
 
-    def get_open_trades(self) -> List[Trade]:
-        with self.get_session() as session:
-            return session.query(Trade).filter(Trade.status == 'open').all()
-
-    def close_trade(self, order_id: str, exit_price: float, pnl: float):
-        with self.get_session() as session:
-            trade = session.query(Trade).filter_by(order_id=order_id).first()
-            if trade:
-                trade.exit_price = exit_price
-                trade.pnl = pnl
-                trade.status = 'closed'
-                session.commit()
-
     def get_automation_stats(self) -> Dict[str, str]:
         return {
             "total_signals": str(len(self.get_signals())),
@@ -193,22 +209,12 @@ class DatabaseManager:
             ).all()
 
             total_pnl = sum(t.pnl for t in trades if t.pnl is not None)
-            total_entry = sum(t.entry_price * t.qty for t in trades if t.entry_price is not None and t.qty is not None)
+            total_entry = sum(t.entry_price * t.qty for t in trades if t.entry_price and t.qty)
 
             if total_entry == 0:
                 return 0.0
 
             return round((total_pnl / total_entry) * 100, 2)
-
-    def update_automation_stats(self, stats: dict):
-        with self.get_session() as session:
-            setting = session.query(SystemSetting).filter_by(key="AUTOMATION_STATS").first()
-            if setting:
-                setting.value = json.dumps(stats)
-            else:
-                setting = SystemSetting(key="AUTOMATION_STATS", value=json.dumps(stats))
-                session.add(setting)
-            session.commit()
 
     def _settings_file(self):
         return "settings.json"
@@ -240,7 +246,7 @@ class DatabaseManager:
 
     def reset_all_settings_to_defaults(self):
         self.settings = {
-            "SCAN_INTERVAL": 900,
+            "SCAN_INTERVAL": 3600,
             "TOP_N_SIGNALS": 5,
             "MAX_LOSS_PCT": -15.0,
             "TP_PERCENT": 0.30,
@@ -250,16 +256,6 @@ class DatabaseManager:
         }
         self._save_settings_to_file()
         print("[DB] 🔄 Settings reset to default values")
-
-    # ---- New helper methods for views/db page ----
-
-    def get_db_health(self) -> dict:
-        try:
-            with self.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return {"status": "ok"}
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
 
     def get_signals_count(self) -> int:
         with self.get_session() as session:
@@ -273,11 +269,14 @@ class DatabaseManager:
         with self.get_session() as session:
             return session.query(Portfolio).count()
 
+    def get_db_health(self) -> dict:
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return {"status": "ok"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
-# === Global instance ===
-
-db_url = os.getenv("DATABASE_URL", "sqlite:///trading.db")
+# === Global Instance ===
 db_manager = DatabaseManager(db_url=db_url)
-
-# Optional alias for convenience
 db = db_manager

@@ -6,16 +6,16 @@ from dotenv import load_dotenv
 import logging
 import signal_generator
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
-# You said 'db' is the module, inside which 'db' is the instance.
-import db  # this imports the module
+import db  # this imports the db module
 from signal_generator import get_usdt_symbols, analyze
 from bybit_client import BybitClient
 from ml import MLFilter
 
-load_dotenv()
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 DEFAULT_SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", 900))  # 15 minutes
 DEFAULT_TOP_N_SIGNALS = int(os.getenv("TOP_N_SIGNALS", 5))
@@ -25,37 +25,69 @@ class TradingEngine:
     def __init__(self):
         print("[Engine] 🚀 Initializing TradingEngine...")
         self.client = BybitClient()
-        # Use the DatabaseManager instance inside db module:
-        self.db = db.db  
+        self.db = db.db
         self.ml = MLFilter()
         self.signal_generator = signal_generator
-        
+
     def get_settings(self):
         scan_interval = self.db.get_setting("SCAN_INTERVAL")
         top_n_signals = self.db.get_setting("TOP_N_SIGNALS")
-        # Cast safely with fallback:
-        scan_interval = int(scan_interval) if scan_interval is not None else DEFAULT_SCAN_INTERVAL
-        top_n_signals = int(top_n_signals) if top_n_signals is not None else DEFAULT_TOP_N_SIGNALS
+        scan_interval = int(scan_interval) if scan_interval else DEFAULT_SCAN_INTERVAL
+        top_n_signals = int(top_n_signals) if top_n_signals else DEFAULT_TOP_N_SIGNALS
         return scan_interval, top_n_signals
-    
+
     def update_settings(self, updates: dict):
         for key, value in updates.items():
             self.db.update_setting(key, value)
 
     def reset_to_defaults(self):
-        self.db.reset_all_settings_to_defaults()  # Implement this in your db module if not already
-
+        self.db.reset_all_settings_to_defaults()
 
     def save_signal_pdf(self, signal: dict):
-        print(f"[Engine] 📄 Saving signal PDF for {signal.get('Symbol', 'UNKNOWN')} (not implemented)")
+        filename = f"reports/signals/{signal.get('Symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        c = canvas.Canvas(filename, pagesize=letter)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, 750, f"Signal Report for {signal.get('Symbol', 'UNKNOWN')}")
+        c.setFont("Helvetica", 10)
+
+        y = 730
+        for key, val in signal.items():
+            c.drawString(50, y, f"{key}: {val}")
+            y -= 15
+            if y < 50:
+                c.showPage()
+                y = 750
+                c.setFont("Helvetica", 10)
+
+        c.save()
+        print(f"[Engine] ✅ Saved signal PDF: {filename}")
 
     def save_trade_pdf(self, trade: dict):
-        print(f"[Engine] 📄 Saving trade PDF for {trade.get('symbol', 'UNKNOWN')} (not implemented)")
+        filename = f"reports/trades/{trade.get('symbol', 'UNKNOWN')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        c = canvas.Canvas(filename, pagesize=letter)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, 750, f"Trade Report for {trade.get('symbol', 'UNKNOWN')}")
+        c.setFont("Helvetica", 10)
+
+        y = 730
+        for key, val in trade.items():
+            c.drawString(50, y, f"{key}: {val}")
+            y -= 15
+            if y < 50:
+                c.showPage()
+                y = 750
+                c.setFont("Helvetica", 10)
+
+        c.save()
+        print(f"[Engine] ✅ Saved trade PDF: {filename}")
 
     def run_once(self):
         print("[Engine] 🔍 Scanning Binance Futures market...\n")
         scan_interval, top_n_signals = self.get_settings()
-
         signals = []
         symbols = get_usdt_symbols()
 
@@ -76,6 +108,7 @@ class TradingEngine:
                     "score": enhanced.get("score", 0.0),
                     "indicators": enhanced,
                 })
+
                 self.save_signal_pdf(enhanced)
                 signals.append(enhanced)
 
@@ -139,7 +172,6 @@ class TradingEngine:
 
         return top_signals
 
-
     def run_loop(self):
         print("[Engine] ♻️ Entering scan loop...\n")
         while True:
@@ -153,15 +185,30 @@ class TradingEngine:
 
     def get_recent_trades(self, limit=10):
         try:
-            return self.db.get_recent_trades(limit=limit)
-        except AttributeError:
-            print("[Engine] ⚠️ get_recent_trades() not implemented in db manager.")
+            trades = self.db.get_recent_trades(limit=limit)
+            formatted = []
+            for t in trades:
+                formatted.append({
+                    "symbol": t.symbol,
+                    "side": t.side,
+                    "qty": t.qty,
+                    "entry_price": t.entry_price,
+                    "exit_price": t.exit_price,
+                    "pnl": t.pnl,
+                    "status": t.status,
+                    "order_id": t.order_id,
+                    "timestamp": t.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    "virtual": t.virtual
+                })
+            return formatted
+        except Exception as e:
+            print(f"[Engine] ⚠️ Failed to get recent trades: {e}")
             return []
 
     def load_capital(self) -> dict:
         if self.client and hasattr(self.client, "get_balance"):
             try:
-                return self.client.get_balance()  # Expected to return {"capital": float, "currency": str}
+                return self.client.get_balance()
             except Exception as e:
                 logger.warning(f"[Engine] ⚠️ get_balance() failed: {e}")
         else:
@@ -174,9 +221,8 @@ class TradingEngine:
                     return {"capital": capital, "currency": currency}
             except Exception as e:
                 logger.warning(f"[Engine] ⚠️ Could not load capital.json: {e}")
-        
-        return {"capital": 100.0, "currency": "USD"}
 
+        return {"capital": 100.0, "currency": "USD"}
 
     def get_daily_pnl(self):
         if hasattr(self.db, "get_daily_pnl_pct"):
@@ -184,13 +230,13 @@ class TradingEngine:
         else:
             print("[Engine] ⚠️ get_daily_pnl_pct() not implemented in DatabaseManager.")
             return None
-        
+
     def calculate_win_rate(self, trades):
-            if not trades:
-                return 0.0
-            wins = sum(1 for trade in trades if trade['pnl'] > 0)
-            return round((wins / len(trades)) * 100, 2)
-    
+        if not trades:
+            return 0.0
+        wins = sum(1 for trade in trades if trade['pnl'] > 0)
+        return round((wins / len(trades)) * 100, 2)
+
     def generate_signals(self, confidence_threshold: float = 70.0) -> list:
         signals = []
         symbols = self.signal_generator.get_usdt_symbols()
@@ -202,11 +248,9 @@ class TradingEngine:
                     signals.append(result)
             except Exception as e:
                 logger.warning(f"[Engine] ⚠️ Error analyzing {sym}: {e}")
-        
-        # Sort signals descending by score
+
         signals.sort(key=lambda x: x.get("Score", 0), reverse=True)
         return signals
-
 
     @property
     def default_settings(self):

@@ -15,6 +15,7 @@ fpdf
 
 # Market Data
 yfinance
+reportlab # PDF generation
 
 # Bybit SDK
 pybit

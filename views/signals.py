@@ -16,7 +16,7 @@ def render(trading_engine, dashboard, db_manager):
     with col3:
         if st.button("🔍 Scan New Signals", type="secondary"):
             with st.spinner("Analyzing markets..."):
-                signals = trading_engine.generate_signals(confidence_threshold)
+                signals = trading_engine.run_once()
                 st.success(f"Generated {len(signals)} signals")
                 st.rerun()
 
