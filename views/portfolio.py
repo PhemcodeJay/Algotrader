@@ -4,35 +4,37 @@ from datetime import datetime, timezone
 def render(trading_engine, dashboard):
     st.title("💼 Wallet Summary")
 
-    # Fetch balance info safely
+    # Load capital info
     balance_info = trading_engine.load_capital()
     capital = balance_info.get("capital", 0.0)
     currency = balance_info.get("currency", "USD")
-    start_balance = 100.0  # You can optionally load this from settings if needed
+    start_balance = 100.0  # Optionally configurable initial capital
 
+    # Fetch recent trades
     trades = trading_engine.get_recent_trades()
 
-    # Compute total return
+    # Calculate total return %
     total_return_pct = ((capital - start_balance) / start_balance) * 100 if start_balance else 0.0
 
-    # Calculate daily P&L
+    # Calculate daily P&L for today
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     daily_pnl = sum(
-        t["pnl"] for t in trades
+        float(t.get("pnl", 0)) for t in trades
         if isinstance(t.get("timestamp"), str) and t["timestamp"].startswith(today)
     )
 
-    # Display top metrics
+    # Show key metrics
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Current Balance", f"${capital:.2f}")
     col2.metric("Total Return", f"{total_return_pct:.2f}%")
     col3.metric("Daily P&L", f"${daily_pnl:.2f}")
-    col4.metric("Win Rate", f"{trading_engine.calculate_win_rate(trades)}%")
+    col4.metric("Win Rate", f"{trading_engine.calculate_win_rate(trades):.2f}%")
 
     st.markdown("---")
 
-    # Assets performance visualization
+    # Main dashboard layout
     left, right = st.columns([2, 1])
+
     with left:
         st.subheader("📈 Assets Analysis")
         if trades:
