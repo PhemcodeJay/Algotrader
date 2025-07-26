@@ -1,7 +1,7 @@
-import requests
 from fpdf import FPDF
 from datetime import datetime, timedelta, timezone
 from time import sleep
+import requests
 import pytz
 import sys
 
@@ -16,33 +16,7 @@ RSI_ZONE = (20, 80)
 INTERVALS = ['15', '60', '240']
 MAX_SYMBOLS = 100
 
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1398790878755295343/4SSV8EvFjBrabgaVbCySl6HRj8GMy5wA_0xrYeccnFE7tU0ODWnyX3NjCS8-XXcIzOe7"
-TELEGRAM_BOT_TOKEN = "8160938302:AAFUmPahGk14OY8F1v5FLHGoVRD-pGTvSOY"
-TELEGRAM_CHAT_ID = "5852301284"
-
 tz_utc3 = timezone(timedelta(hours=3))
-
-# === NOTIFICATIONS ===
-def send_discord(message):
-    if not DISCORD_WEBHOOK_URL:
-        return
-    try:
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
-    except:
-        pass
-
-def send_telegram(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        })
-    except:
-        pass
 
 # === PDF GENERATOR ===
 class SignalPDF(FPDF):
@@ -201,7 +175,6 @@ def analyze(symbol):
     except:
         margin = 1.0
 
-    # === REAL CONFIDENCE SCORING ===
     score = 0
     score += 0.3 if tf['macd'] and tf['macd'] > 0 else 0
     score += 0.2 if tf['rsi'] < 30 or tf['rsi'] > 70 else 0
@@ -256,11 +229,7 @@ def main():
             pdf.add_signals(signals[:20])
             fname = f"signals_{datetime.now(tz_utc3).strftime('%H%M')}.pdf"
             pdf.output(fname)
-            print(f"📄 PDF saved: {fname}")
-
-            send_discord("📊 **Top 5 Bybit Signals**\n\n" + agg_msg)
-            send_telegram("📊 *Top 5 Bybit Signals*\n\n" + agg_msg)
-            print("✅ Notifications sent to Discord & Telegram.\n")
+            print(f"📄 PDF saved: {fname}\n")
         else:
             print("⚠️ No valid signals found\n")
 

@@ -32,6 +32,7 @@ class AutomatedTrader:
             "last_update": None,
             "trades_executed": 0,
             "successful_trades": 0,
+            "failed_trades": 0,
             "total_pnl": 0.0,
         }
 
@@ -66,9 +67,7 @@ class AutomatedTrader:
         sorted_trades = sorted(trades, key=lambda t: t.timestamp)
 
         for trade in sorted_trades:
-            pnl = getattr(trade, "pnl", None)
-            if pnl is None:
-                pnl = trade.get("pnl", 0)
+            pnl = getattr(trade, "pnl", 0.0)
             equity_curve.append(equity_curve[-1] + float(pnl))
 
         max_drawdown, _ = calculate_drawdown(equity_curve)
@@ -81,6 +80,31 @@ class AutomatedTrader:
             return False
 
         return True
+
+    def log_trade_results(self):
+        today_trades = self.get_today_trades()
+        for trade in today_trades:
+            symbol = getattr(trade, "symbol", "UNKNOWN")
+            side = getattr(trade, "side", "N/A")
+            entry = getattr(trade, "entry_price", 0)
+            exit_price = getattr(trade, "exit_price", 0)
+            pnl = getattr(trade, "pnl", 0.0)
+
+            # Avoid recounting already processed trades
+            if not hasattr(trade, "_logged"):
+                self.stats["trades_executed"] += 1
+                self.stats["total_pnl"] += pnl
+                if pnl > 0:
+                    self.stats["successful_trades"] += 1
+                    outcome = "✅ PROFIT"
+                else:
+                    self.stats["failed_trades"] += 1
+                    outcome = "❌ LOSS"
+
+                self.logger.info(
+                    f"[TRADE] {symbol} {side} | Entry: {entry:.4f} | Exit: {exit_price:.4f} | PnL: {pnl:.2f} | {outcome}"
+                )
+                setattr(trade, "_logged", True)
 
     def automation_cycle(self):
         while self.is_running:
@@ -97,6 +121,11 @@ class AutomatedTrader:
                     top_signals = self.engine.run_once()[:self.max_signals]
                     self.stats["signals_generated"] += len(top_signals)
                     self.stats["last_update"] = now.isoformat()
+
+                    # Log results of today's trades
+                    self.log_trade_results()
+
+                    # Save stats
                     self.db.update_automation_stats(self.stats)
 
                     self.last_run_time = now
@@ -145,11 +174,10 @@ class AutomatedTrader:
         }
 
     def update_settings(self, new_settings: dict):
-        """Update automation settings and reload them into instance variables."""
         for key, value in new_settings.items():
             self.db.set_setting(key, value)
 
-        # Reload in-memory settings
+        # Reload
         self.signal_interval = int(self.db.get_setting("SCAN_INTERVAL") or 900)
         self.max_signals = int(self.db.get_setting("TOP_N_SIGNALS") or 5)
         self.max_drawdown_limit = float(self.db.get_setting("MAX_DRAWDOWN") or 20)
@@ -157,5 +185,5 @@ class AutomatedTrader:
         self.max_position_pct = float(self.db.get_setting("MAX_POSITION_PCT") or 5)
 
 
-# ✅ Singleton instance for use across app
+# ✅ Singleton instance
 automated_trader = AutomatedTrader()
