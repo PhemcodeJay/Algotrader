@@ -7,3 +7,4 @@ views/__pycache__/portfolio.cpython-313.pyc
 views/__pycache__/signals.cpython-313.pyc
 views/__pycache__/settings.cpython-313.pyc
 views/__pycache__/dashboard.cpython-313.pyc
+.env_prod
