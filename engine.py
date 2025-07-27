@@ -196,28 +196,28 @@ class TradingEngine:
                 print(f"[Engine] ❌ Order failed: {e}")
                 continue
 
-            trade = {
-                "symbol": signal.get("Symbol"),
-                "side": signal.get("Side"),
-                "qty": signal.get("Qty", 0),
-                "entry_price": signal.get("Entry", 0.0),
-                "exit_price": None,
-                "pnl": None,
-                "timestamp": datetime.now(timezone.utc),
-                "status": "open",
-                "order_id": order.get("order_id", "") if order else "",
-                "virtual": not is_real,
-                # Added fields:
-                "sl": signal.get("SL"),
-                "tp": signal.get("TP"),
+            # ✅ FIXED: Fully structured trade_data
+            trade_data = {
+                "symbol": order["symbol"],
+                "side": order["side"],
+                "qty": order["qty"],
+                "entry_price": order["price"],
+                "stop_loss": signal.get("SL"),
+                "take_profit": signal.get("TP"),
                 "leverage": signal.get("leverage"),
                 "margin_usdt": signal.get("margin_usdt"),
+                "status": "open",
+                "order_id": order["order_id"],
+                "timestamp": order.get("create_time", datetime.now(timezone.utc)),
+                "virtual": not is_real,
+                "exit_price": None,
+                "pnl": None,
             }
 
-            self.db.add_trade(trade)
-            self.post_trade_to_discord(trade)
-            self.post_trade_to_telegram(trade)
-            trades.append(trade)
+            self.db.add_trade(trade_data)
+            self.post_trade_to_discord(trade_data)
+            self.post_trade_to_telegram(trade_data)
+            trades.append(trade_data)
 
         self.save_signal_pdf(signals)
         self.save_trade_pdf(trades)
@@ -226,7 +226,6 @@ class TradingEngine:
             self.client.monitor_virtual_orders()
 
         return top_signals
-
 
     def run_loop(self):
         print("[Engine] ♻️ Starting scan loop...")
