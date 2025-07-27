@@ -171,9 +171,9 @@ def analyze(symbol):
         risk_amt = ACCOUNT_BALANCE * RISK_PCT
         sl_diff = abs(entry - sl)
         qty = (risk_amt / sl_diff)
-        margin = round((qty * entry) / LEVERAGE, 6)
+        margin_usdt = round((qty * entry) / LEVERAGE, 6)
     except:
-        margin = 1.0
+        margin_usdt = 1.0
 
     score = 0
     score += 0.3 if tf['macd'] and tf['macd'] > 0 else 0
@@ -190,7 +190,7 @@ def analyze(symbol):
         'TP': tp,
         'SL': sl,
         'Trail': trail,
-        'Margin': margin,
+        'Margin': margin_usdt,
         'Market': price,
         'Liq': liq,
         'BB Slope': bb_dir,

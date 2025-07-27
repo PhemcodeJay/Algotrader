@@ -99,7 +99,7 @@ class TradingEngine:
             f"Side: `{signal.get('Side', 'N/A')}`\n"
             f"Entry: `{signal.get('Entry', 'N/A')}` | TP: `{signal.get('TP', 'N/A')}` | SL: `{signal.get('SL', 'N/A')}`\n"
             f"Score: `{signal.get('score', 0)}%` | Strategy: `{signal.get('strategy', '-')}`\n"
-            f"Market: `{signal.get('market', 'bybit')}` | Margin: `{signal.get('margin', '-')}`"
+            f"Market: `{signal.get('market', 'bybit')}` | Margin: `{signal.get('margin_usdt', '-')}`"
         )
         send_discord_message(msg)
 
@@ -109,7 +109,7 @@ class TradingEngine:
             f"Side: <code>{signal.get('Side', 'N/A')}</code>\n"
             f"Entry: <code>{signal.get('Entry', 'N/A')}</code> | TP: <code>{signal.get('TP', 'N/A')}</code> | SL: <code>{signal.get('SL', 'N/A')}</code>\n"
             f"Score: <code>{signal.get('score', 0)}%</code> | Strategy: <code>{signal.get('strategy', '-')}</code>\n"
-            f"Market: <code>{signal.get('market', 'bybit')}</code> | Margin: <code>{signal.get('margin', '-')}</code>"
+            f"Market: <code>{signal.get('market', 'bybit')}</code> | Margin: <code>{signal.get('margin_usdt', '-')}</code>"
         )
         send_telegram_message(msg, parse_mode="HTML")
 
@@ -162,7 +162,7 @@ class TradingEngine:
                     "tp": enhanced.get("TP"),
                     "entry": enhanced.get("Entry"),
                     "leverage": enhanced.get("leverage"),
-                    "margin_usdt": enhanced.get("margin"),
+                    "margin_usdt": enhanced.get("margin_usdt"),
                     "market": enhanced.get("market", "bybit"),
                     "created_at": datetime.now(timezone.utc),
                 })
@@ -211,7 +211,7 @@ class TradingEngine:
                 "sl": signal.get("SL"),
                 "tp": signal.get("TP"),
                 "leverage": signal.get("leverage"),
-                "margin_usdt": signal.get("margin"),
+                "margin_usdt": signal.get("margin_usdt"),
             }
 
             self.db.add_trade(trade)

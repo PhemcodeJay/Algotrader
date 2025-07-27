@@ -9,6 +9,7 @@ from utils import format_currency, format_percentage, get_trend_color
 from signal_generator import ema, rsi, bollinger
 from db import db_manager
 
+
 class DashboardComponents:
     def __init__(self):
         pass
@@ -18,14 +19,15 @@ class DashboardComponents:
         entry = signal.get('entry_price', signal.get('entry', 0)) or 0
         tp = signal.get('tp_price', signal.get('tp', 0)) or 0
         sl = signal.get('sl_price', signal.get('sl', 0)) or 0
-        confidence = signal.get('confidence', 0) or 0
-        score = signal.get('score', 'N/A')
-        rsi_val = signal.get('rsi', 'N/A')
+        leverage = signal.get('leverage', 20)
+        margin_usdt = signal.get('margin_usdt', 0.0)
+        confidence = signal.get('score', 0)
 
         with col1:
             st.markdown(f"**{signal.get('symbol', 'N/A')}** - {signal.get('side', 'N/A')}")
             st.markdown(f"Strategy: {signal.get('strategy', 'N/A')}")
             st.markdown(f"Entry: ${entry:.2f} | TP: ${tp:.2f} | SL: ${sl:.2f}")
+            st.markdown(f"Leverage: {leverage}x | Margin: ${margin_usdt:.2f}")
 
         with col2:
             confidence_color = "green" if confidence >= 75 else "orange" if confidence >= 60 else "red"
@@ -34,7 +36,6 @@ class DashboardComponents:
                 border-radius: 6px; text-align: center; font-weight: bold'>
                 {confidence}% Confidence</div>
             """, unsafe_allow_html=True)
-            st.markdown(f"Score: {score} | RSI: {rsi_val}")
 
     def display_signals_table(self, signals):
         def safe_get(signal, key, default=0.0):
@@ -50,9 +51,9 @@ class DashboardComponents:
             'Entry': f"${safe_get(s, 'entry_price'):.2f}",
             'TP': f"${safe_get(s, 'tp_price'):.2f}",
             'SL': f"${safe_get(s, 'sl_price'):.2f}",
-            'Confidence': f"{s.get('confidence', 0)}%",
-            'Score': s.get('score', 'N/A'),
-            'RSI': s.get('rsi', 'N/A'),
+            'Confidence': f"{s.get('score', 0)}%",
+            'Leverage': f"{s.get('leverage', 20)}x",
+            'Margin USDT': f"${s.get('margin_usdt', 0):.2f}",
             'Trend': s.get('trend', 'N/A'),
             'Timestamp': s.get('timestamp', 'N/A')
         } for s in signals])
@@ -65,6 +66,8 @@ class DashboardComponents:
             'Entry': f"${t.get('entry', 0):.2f}",
             'Exit': f"${t.get('exit', 0):.2f}",
             'Qty': t.get('qty'),
+            'Leverage': f"{t.get('leverage', 20)}x",
+            'Margin USDT': f"${t.get('margin_usdt', 0):.2f}",
             'P&L': f"{'🟢' if float(t.get('pnl') or 0) > 0 else '🔴'} ${float(t.get('pnl') or 0):.2f}",
             'Strategy': t.get('strategy', 'N/A'),
             'Timestamp': t.get('timestamp')
